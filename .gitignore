@@ -1,0 +1,10 @@
+./*.md
+./*.docx
+./*.doc
+*.pyc
+*.db
+*.yaml
+*.env
+.claude
+.idea
+.pytest_cache

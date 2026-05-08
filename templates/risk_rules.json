@@ -1,0 +1,98 @@
+{
+  "_comment": "风险判定规则配置，audit skill 引用此配置",
+
+  "temp_parking_income": {
+    "_comment": "临停收入对比规则",
+    "compare_source": {
+      "uploaded": "monthly_temp_income",
+      "bem": "actual_income_wechat_monthly_avg"
+    },
+    "tolerance_percent": 5,
+    "rules": {
+      "match": "差异 ≤ 5% → ✅ 通过",
+      "warning": "差异 > 5% → ⚠️ 需关注，输出差异数据",
+      "trend_decline_note": "BEM数据显示近3个月环比下降时，额外输出趋势说明"
+    }
+  },
+
+  "monthly_ticket_income": {
+    "_comment": "月票收入对比规则",
+    "compare_source": {
+      "uploaded": "monthly_ticket_income",
+      "bem": "ticket_income_monthly_avg"
+    },
+    "tolerance_percent": 5,
+    "skip_condition": "不涉及月票置换时跳过",
+    "rules": {
+      "match": "差异 ≤ 5% → ✅ 通过",
+      "warning": "差异 > 5% → ⚠️ 需关注，输出差异数据"
+    }
+  },
+
+  "contract_period": {
+    "_comment": "合同有效年限检查规则",
+    "parking_voucher": {
+      "rule": "合同有效年限（月）必须在承包期限内",
+      "pass": "在期限内 → ✅",
+      "fail": "超出期限 → ❌"
+    },
+    "spot_exchange": {
+      "rule": "合同有效年限必须在承包期限内，且≥36个月",
+      "pass": "在期限内且≥36个月 → ✅",
+      "warning": "在期限内但<36个月 → ⚠️",
+      "fail": "超出期限 → ❌"
+    }
+  },
+
+  "voucher_consume_period": {
+    "_comment": "券消耗年限检查（仅停车券业务）",
+    "rule": "券消耗年限（月）必须晚于合同有效年限（月）",
+    "pass": "晚于 → ✅",
+    "fail": "不晚于 → ❌"
+  },
+
+  "consumable_income_ratio": {
+    "_comment": "可消耗收入占比（存在自有渠道时触发）",
+    "formula": "[总计 - 微信小程序（开放平台） - ETC] / 总计",
+    "data_source": "bem_fetch.temp_parking_monthly 各渠道明细"
+  },
+
+  "voucher_monthly_consume_check": {
+    "_comment": "停车券月均消耗额度检查（存在自有渠道时触发）",
+    "formula": "停车券月均消耗额度 ≤ 可消耗收入占比 × 车场月均临停收入",
+    "pass": "满足 → ✅",
+    "warning": "不满足 → ⚠️ 输出差额"
+  },
+
+  "gross_margin": {
+    "_comment": "毛利率计算",
+    "formula": "项目整体毛利 / 停车券总价值",
+    "output": "输出百分比 + 结合采买折扣输出权限范围"
+  },
+
+  "equipment_service_amount": {
+    "_comment": "设备服务置换金额检查（仅车位置换业务）",
+    "rule": "设备服务置换金额若与CRM结算价一致，需与业务确认是否填错",
+    "pass": "不一致 → ✅",
+    "manual": "一致 → 📋 需与业务确认"
+  },
+
+  "external_monthly_card": {
+    "_comment": "对外月卡费用对比（仅车位置换业务）",
+    "compare_source": {
+      "uploaded": "external_monthly_card_fee",
+      "bem": "ticket_types[is_internal=false].price"
+    },
+    "rules": {
+      "match": "一致 → ✅",
+      "warning": "不一致 → ⚠️ 输出差异"
+    }
+  },
+
+  "company_lookup": {
+    "_comment": "企查查查询",
+    "output_fields": ["social_insurance_count", "status"],
+    "note": "仅供参考，不作为审核通过/拒绝依据",
+    "contractor_check": "承包方时额外检查：承包到期时间是否超出合同时间"
+  }
+}
