@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>资源置换评估系统</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>资源置换评估系统</h1>
+        <p class="subtitle">上传车场资料，AI 自动完成初审评估</p>
+
+        <!-- 上传区 -->
+        <div id="upload-section" class="card">
+            <div id="drop-zone" class="drop-zone">
+                <div class="drop-zone-text">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="1.5">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    <p>拖放文件到此处，或点击选择文件</p>
+                    <p class="hint">支持 .xlsx / .xls / .png / .jpg</p>
+                </div>
+                <input type="file" id="file-input" accept=".xlsx,.xls,.png,.jpg,.jpeg" hidden>
+            </div>
+
+            <!-- 文件预览 -->
+            <div id="file-preview" class="hidden">
+                <div class="file-info">
+                    <span id="file-name"></span>
+                    <button id="remove-file" class="btn-small">&times;</button>
+                </div>
+
+                <div id="parsed-preview" class="parsed-preview"></div>
+
+                <div class="form-row">
+                    <label>业务类型：</label>
+                    <select id="business-type">
+                        <option value="parking_voucher">停车券业务</option>
+                        <option value="spot_exchange">车位置换业务</option>
+                    </select>
+                    <button id="start-btn" class="btn-primary">开始审核</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 状态栏 -->
+        <div id="status-bar" class="card hidden">
+            <div class="status-indicator">
+                <div class="spinner"></div>
+                <span id="status-text">准备中...</span>
+            </div>
+            <div id="tool-calls" class="tool-calls"></div>
+        </div>
+
+        <!-- 结果区 -->
+        <div id="result-section" class="card hidden">
+            <div class="result-header">
+                <h2>审核结果</h2>
+                <button id="copy-btn" class="btn-small" title="复制结果">复制</button>
+            </div>
+            <div id="result-content" class="result-content"></div>
+        </div>
+
+        <!-- 数据对比区 -->
+        <div id="comparison-section" class="card hidden">
+            <div class="result-header">
+                <h2>数据对比</h2>
+                <span class="comparison-hint">上传资料 vs BEM 系统数据</span>
+            </div>
+            <div id="comparison-content"></div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
