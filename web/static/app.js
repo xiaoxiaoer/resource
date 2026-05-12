@@ -99,6 +99,7 @@
 
         const pi = data.project_info || {};
         const ct = data.calculation_tool || {};
+        const sec = data.spot_exchange_calc || {};
 
         let html = '<table><tbody>';
         const rows = [
@@ -107,12 +108,31 @@
             ['合作方类型', pi.property_type],
             ['承包到期', pi.contract_expire_date],
             ['车位数量', pi.parking_spaces],
-            ['自有渠道', pi.has_own_channel],
-            ['月均临停收入', pi.monthly_avg_temp ? '¥' + pi.monthly_avg_temp.toLocaleString() : '-'],
-            ['月均月票收入', pi.monthly_avg_ticket ? '¥' + pi.monthly_avg_ticket.toLocaleString() : '-'],
-            ['合同金额', ct.contract_amount ? '¥' + ct.contract_amount.toLocaleString() : '-'],
-            ['停车券总价值', ct.voucher_total_value ? '¥' + ct.voucher_total_value.toLocaleString() : '-'],
         ];
+
+        if (data.business_type === 'spot_exchange' && Object.keys(sec).length > 0) {
+            rows.push(
+                ['车场业态', pi.business_nature],
+                ['收费规则', pi.parking_fee_rule],
+                ['设备金额', sec.equipment_amount ? '¥' + sec.equipment_amount.toLocaleString() : '-'],
+                ['置换车位数', sec.replacement_spaces || '-'],
+                ['合同月数', sec.contract_months ? sec.contract_months + '个月' : '-'],
+                ['月卡费用', sec.monthly_card_fee ? '¥' + sec.monthly_card_fee.toLocaleString() + '/月' : '-'],
+                ['车位采购单价', sec.purchase_unit_price ? '¥' + sec.purchase_unit_price.toFixed(2) + '/月' : '-'],
+                ['项目总成本', sec.total_cost ? '¥' + Math.round(sec.total_cost).toLocaleString() : '-'],
+                ['我司总收入', sec.total_revenue ? '¥' + Math.round(sec.total_revenue).toLocaleString() : '-'],
+                ['我司利润额', sec.our_profit ? '¥' + Math.round(sec.our_profit).toLocaleString() : '-'],
+            );
+        } else {
+            rows.push(
+                ['自有渠道', pi.has_own_channel],
+                ['月均临停收入', pi.monthly_avg_temp ? '¥' + pi.monthly_avg_temp.toLocaleString() : '-'],
+                ['月均月票收入', pi.monthly_avg_ticket ? '¥' + pi.monthly_avg_ticket.toLocaleString() : '-'],
+                ['合同金额', ct.contract_amount ? '¥' + ct.contract_amount.toLocaleString() : '-'],
+                ['停车券总价值', ct.voucher_total_value ? '¥' + ct.voucher_total_value.toLocaleString() : '-'],
+            );
+        }
+
         rows.forEach(([k, v]) => {
             html += `<tr><th>${k}</th><td>${v || '-'}</td></tr>`;
         });
@@ -309,9 +329,11 @@
 
             data.summary.forEach(item => {
                 const statusClass = item.status === 'match' ? 'diff-match' :
-                                    item.status === 'warning' ? 'diff-warning' : 'diff-info';
+                                    item.status === 'warning' ? 'diff-warning' :
+                                    item.status === 'skip_bem_zero' ? 'diff-skip' : 'diff-info';
                 const statusLabel = item.status === 'match' ? '一致' :
-                                    item.status === 'warning' ? '有差异' : '参考';
+                                    item.status === 'warning' ? '有差异' :
+                                    item.status === 'skip_bem_zero' ? '跳过对比' : '参考';
                 const excelDisplay = formatValue(item.excel_value, item.unit);
                 const bemDisplay = item.status === 'info' ? item.bem_value : formatValue(item.bem_value, item.unit);
                 const diffDisplay = item.diff_percent != null ? item.diff_percent + '%' : '-';

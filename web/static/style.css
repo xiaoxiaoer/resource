@@ -150,6 +150,7 @@ h1 { font-size: 24px; margin-bottom: 4px; }
 .diff-badge.diff-match { background: #e6f7e6; color: #2a7d2a; }
 .diff-badge.diff-warning { background: #fff3e0; color: #c67100; }
 .diff-badge.diff-info { background: #e3f0ff; color: #2a6bc7; }
+.diff-badge.diff-skip { background: #f0f0f0; color: #888; }
 
 /* 月度明细可折叠 */
 .collapsible { cursor: pointer; user-select: none; }

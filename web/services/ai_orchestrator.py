@@ -80,8 +80,15 @@ def _build_system_prompt(business_type: str) -> str:
         skill_md = _load_file(SKILLS_DIR / 'audit-spot-exchange' / 'skill.md')
 
     completeness_skill = _load_file(SKILLS_DIR / 'completeness-check' / 'skill.md')
+    audit_field_rules = _load_file(PROMPTS_DIR / 'audit_field_rules.md')
 
     return f"""{system_md}
+
+---
+
+## 审核字段范围规则
+
+{audit_field_rules}
 
 ---
 
@@ -201,14 +208,32 @@ def _build_comparison(parsed_data: dict, tool_results: list[dict]) -> dict:
         # 月均月票收入
         excel_ticket = pi.get('monthly_avg_ticket') or ct.get('monthly_ticket_income')
         bem_ticket = bem.get('monthly_ticket', {}).get('summary', {}).get('monthly_avg')
-        comparison['summary'].append({
-            'label': '月均月票收入',
-            'excel_value': excel_ticket,
-            'bem_value': bem_ticket,
-            'unit': '元/月',
-            'diff_percent': _diff_percent(excel_ticket, bem_ticket),
-            'status': _diff_status(excel_ticket, bem_ticket),
-        })
+
+        # BEM 月票数据全为 0 时跳过对比验证
+        bem_ticket_monthly = bem.get('monthly_ticket', {}).get('monthly', [])
+        bem_ticket_all_zero = (
+            all(m.get('ticket_income', 0) == 0 for m in bem_ticket_monthly)
+            if bem_ticket_monthly
+            else (bem_ticket == 0 or bem_ticket is None)
+        )
+        if bem_ticket_all_zero:
+            comparison['summary'].append({
+                'label': '月均月票收入',
+                'excel_value': excel_ticket,
+                'bem_value': bem_ticket or 0,
+                'unit': '元/月',
+                'diff_percent': None,
+                'status': 'skip_bem_zero',
+            })
+        else:
+            comparison['summary'].append({
+                'label': '月均月票收入',
+                'excel_value': excel_ticket,
+                'bem_value': bem_ticket,
+                'unit': '元/月',
+                'diff_percent': _diff_percent(excel_ticket, bem_ticket),
+                'status': _diff_status(excel_ticket, bem_ticket),
+            })
 
         # 临停收入趋势
         temp_trend = bem.get('temp_parking', {}).get('summary', {})

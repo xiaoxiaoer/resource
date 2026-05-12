@@ -1,8 +1,8 @@
 {
-  "_comment": "车场资料必填字段定义，completeness-check skill 引用此配置",
+  "_comment": "车场资料必填字段定义，completeness-check skill 引用此配置。字段范围以 prompts/audit_field_rules.md 为准。",
 
   "common": {
-    "_comment": "两种业务共有必填字段",
+    "_comment": "两种业务共有必填字段（项目基本信息表）",
     "fields": [
       {
         "key": "company_name",
@@ -59,8 +59,47 @@
   },
 
   "parking_voucher": {
-    "_comment": "停车券业务额外必填字段",
+    "_comment": "停车券业务测算工具表必填字段（仅 10 个，参见 audit_field_rules.md）",
     "fields": [
+      {
+        "key": "equipment_service_amount",
+        "label": "设备和服务置换金额",
+        "required": true,
+        "type": "number"
+      },
+      {
+        "key": "cash_purchase_amount",
+        "label": "现金采买金额",
+        "required": true,
+        "type": "number"
+      },
+      {
+        "key": "payment_method",
+        "label": "付款方式",
+        "required": false,
+        "type": "string",
+        "note": "有值时展示，无值不强制"
+      },
+      {
+        "key": "business_fee",
+        "label": "业务费",
+        "required": false,
+        "type": "number",
+        "note": "有则需运营人工评估"
+      },
+      {
+        "key": "discount_rate",
+        "label": "采买折扣",
+        "required": true,
+        "type": "number"
+      },
+      {
+        "key": "contract_months",
+        "label": "合同有效年限（月）",
+        "required": true,
+        "type": "integer",
+        "min": 1
+      },
       {
         "key": "voucher_consume_months",
         "label": "券消耗年限（月）",
@@ -69,60 +108,40 @@
         "min": 1
       },
       {
-        "key": "voucher_monthly_consume",
-        "label": "停车券月均消耗额度",
+        "key": "vat_rate",
+        "label": "增值税专用发票",
         "required": true,
         "type": "number"
       },
       {
-        "key": "voucher_total_value",
-        "label": "停车券总价值",
+        "key": "monthly_temp_income",
+        "label": "车场月均临停收入",
         "required": true,
         "type": "number"
       },
       {
-        "key": "project_gross_profit",
-        "label": "项目整体毛利",
+        "key": "monthly_ticket_income",
+        "label": "车场月均月租收入",
         "required": true,
-        "type": "number"
-      },
-      {
-        "key": "installment_deduction",
-        "label": "分期代扣",
-        "required": false,
         "type": "number",
-        "note": "有则需运营人工评估"
-      },
-      {
-        "key": "crm_service_fee",
-        "label": "CRM专项服务费",
-        "required": false,
-        "type": "number",
-        "note": "与业务费不会同时共存"
-      },
-      {
-        "key": "business_fee",
-        "label": "业务费",
-        "required": false,
-        "type": "number",
-        "note": "与CRM专项服务费不会同时共存"
+        "note": "BEM月票数据全为0时跳过对比验证"
       }
     ]
   },
 
   "spot_exchange": {
-    "_comment": "车位置换业务额外必填字段",
+    "_comment": "车位置换业务测算工具表必填字段（仅 6 个，参见 audit_field_rules.md）",
     "fields": [
       {
         "key": "equipment_service_amount",
-        "label": "设备服务置换金额",
+        "label": "设备和服务置换金额",
         "required": true,
         "type": "number",
         "note": "应为CRM报价单总金额"
       },
       {
-        "key": "crm_settlement_price",
-        "label": "CRM结算价",
+        "key": "vat_rate",
+        "label": "增值税专用发票",
         "required": true,
         "type": "number"
       },
@@ -134,15 +153,21 @@
         "note": "取BEM中非内部/VIP的月票套餐价格"
       },
       {
-        "key": "allow_posting_materials",
-        "label": "是否允许张贴物料",
+        "key": "replacement_spaces",
+        "label": "置换车位数",
         "required": true,
-        "type": "enum",
-        "options": ["是", "否"]
+        "type": "integer",
+        "min": 1
       },
       {
-        "key": "contract_months_min",
-        "label": "合同有效年限最低要求",
+        "key": "profit_share_ratio",
+        "label": "回本后甲方分润比例",
+        "required": true,
+        "type": "number"
+      },
+      {
+        "key": "contract_months",
+        "label": "合同有效年限",
         "required": true,
         "type": "integer",
         "min": 36,

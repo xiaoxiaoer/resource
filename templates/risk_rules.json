@@ -1,5 +1,5 @@
 {
-  "_comment": "风险判定规则配置，audit skill 引用此配置",
+  "_comment": "风险判定规则配置，audit skill 引用此配置。字段范围以 prompts/audit_field_rules.md 为准。",
 
   "temp_parking_income": {
     "_comment": "临停收入对比规则",
@@ -23,6 +23,8 @@
     },
     "tolerance_percent": 5,
     "skip_condition": "不涉及月票置换时跳过",
+    "skip_when_bem_all_zero": true,
+    "skip_when_bem_all_zero_note": "BEM月票数据全部为0时跳过验证，仅展示数值",
     "rules": {
       "match": "差异 ≤ 5% → ✅ 通过",
       "warning": "差异 > 5% → ⚠️ 需关注，输出差异数据"
@@ -49,25 +51,6 @@
     "rule": "券消耗年限（月）必须晚于合同有效年限（月）",
     "pass": "晚于 → ✅",
     "fail": "不晚于 → ❌"
-  },
-
-  "consumable_income_ratio": {
-    "_comment": "可消耗收入占比（存在自有渠道时触发）",
-    "formula": "[总计 - 微信小程序（开放平台） - ETC] / 总计",
-    "data_source": "bem_fetch.temp_parking_monthly 各渠道明细"
-  },
-
-  "voucher_monthly_consume_check": {
-    "_comment": "停车券月均消耗额度检查（存在自有渠道时触发）",
-    "formula": "停车券月均消耗额度 ≤ 可消耗收入占比 × 车场月均临停收入",
-    "pass": "满足 → ✅",
-    "warning": "不满足 → ⚠️ 输出差额"
-  },
-
-  "gross_margin": {
-    "_comment": "毛利率计算",
-    "formula": "项目整体毛利 / 停车券总价值",
-    "output": "输出百分比 + 结合采买折扣输出权限范围"
   },
 
   "equipment_service_amount": {
