@@ -1,8 +1,6 @@
-./*.md
 ./*.docx
 ./*.doc
 *.pyc
-*.db
 *.yaml
 *.env
 .claude
