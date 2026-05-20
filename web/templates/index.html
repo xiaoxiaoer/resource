@@ -41,6 +41,10 @@
                         <option value="parking_voucher">停车券业务</option>
                         <option value="spot_exchange">车位置换业务</option>
                     </select>
+                    <label class="toggle-label" title="开启后由 LLM 在程序化校验基础上做补充分析">
+                        <input type="checkbox" id="enable-llm">
+                        <span>LLM 增强分析</span>
+                    </label>
                     <button id="start-btn" class="btn-primary">开始审核</button>
                 </div>
             </div>
@@ -59,7 +63,7 @@
         <div id="result-section" class="card hidden">
             <div class="result-header">
                 <h2>审核结果</h2>
-                <button id="copy-btn" class="btn-small" title="复制结果">复制</button>
+<button id="copy-btn" class="btn-small" title="复制结果">复制</button>
             </div>
             <div id="result-content" class="result-content"></div>
         </div>

@@ -6,7 +6,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 
 from web.services.excel_parser import parse_audit_excel
 from web.services.audit_session import create_session, get_session
-from web.config import UPLOAD_DIR
+from web.config import UPLOAD_DIR, ENABLE_LLM_AUDIT
 
 router = APIRouter(prefix="/api")
 
@@ -73,12 +73,15 @@ async def start_audit(body: dict):
         raise HTTPException(400, f"Session status is {session.status}, cannot start audit")
 
     session.business_type = business_type
+    enable_llm = body.get("enable_llm")
+    session.enable_llm = bool(enable_llm) if enable_llm is not None else ENABLE_LLM_AUDIT
     session.status = "running"
 
     return {
         "session_id": session.session_id,
         "status": "running",
         "stream_url": f"/api/audit/{session.session_id}/stream",
+        "enable_llm": session.enable_llm,
     }
 
 

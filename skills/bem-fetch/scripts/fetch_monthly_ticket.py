@@ -107,9 +107,7 @@ async def fetch_monthly_ticket_async(
                 continue
             monthly.append({
                 'month': row.get('reportDateStr', ''),
-                'ticket_income': float(row.get('timeTicketTotalIncome', 0) or 0),
-                'open_amount': float(row.get('openActualAmount', 0) or 0),
-                'renew_amount': float(row.get('renewActualAmount', 0) or 0),
+                'ticket_income': float(row.get('onlineTotalActualAmount', 0) or 0),
                 'raw': row,
             })
 

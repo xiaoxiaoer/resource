@@ -135,6 +135,7 @@ def parse_project_info_collection(ws) -> dict:
         'property_type': _cell_str(ws, 7, 3),     # 合作客户主体
         'contract_expire_date': _serial_to_date(_cell_num(ws, 8, 3)) or _cell_str(ws, 8, 3),
         'parking_fee_rule': _cell_str(ws, 9, 3),
+        'occupancy_rate': _cell_str(ws, 10, 3),   # 车位占用率
         'allow_posting': _cell_str(ws, 11, 3),
         'settlement_mode': _cell_str(ws, 12, 3),
     }
@@ -248,9 +249,40 @@ def parse_calculation_tool(ws) -> dict:
     # 付款方式（字符串字段）
     result['payment_method'] = _str('付款方式', 4)
 
-    # 评估区（右侧，rows 4-5 相对固定）
+    # 评估区（右侧，rows 4-6 相对固定）
     result['monthly_consume_ratio'] = _cell_num(ws, 4, 8)
+    result['consume_ratio_status'] = _cell_str(ws, 4, 9)
     result['actual_purchase_discount'] = _cell_num(ws, 5, 8)
+    result['discount_status'] = _cell_str(ws, 5, 9)
+    result['discount_range'] = _cell_str(ws, 5, 10)
+    result['overall_assessment'] = _cell_str(ws, 6, 8)
+
+    # 评分表（rows 22-26, cols G-L）— 通过标签查找起始行
+    score_header_row = _find_label_row(ws, 7, '所属类别', 18, 30)
+    if score_header_row:
+        evaluation_scores = []
+        for r in range(score_header_row + 1, score_header_row + 5):
+            left_cat = _cell_str(ws, r, 7)
+            left_val = _cell_str(ws, r, 8)
+            left_score = _cell_str(ws, r, 9)
+            if left_cat:
+                evaluation_scores.append({
+                    'category': left_cat,
+                    'value': left_val,
+                    'score': left_score,
+                })
+            right_cat = _cell_str(ws, r, 10)
+            right_val = _cell_str(ws, r, 11)
+            right_score = _cell_str(ws, r, 12)
+            if right_cat and '风险评分' in right_cat:
+                result['risk_rating'] = right_score
+            elif right_cat:
+                evaluation_scores.append({
+                    'category': right_cat,
+                    'value': right_val,
+                    'score': right_score,
+                })
+        result['evaluation_scores'] = evaluation_scores
 
     return result
 

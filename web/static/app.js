@@ -4,6 +4,15 @@
 (function() {
     const $ = (sel) => document.querySelector(sel);
 
+    // 不输出的内容关键字，用于过滤 LLM 审核结果
+    // 来源：prompts/audit_field_rules.md
+    const EXCLUDED_PATTERNS = [
+        '毛利计算', '项目整体毛利', '设备预估毛利',
+        '合同金额', '停车券总价值', '停车券月均分摊', '月均收入合计',
+        '单车位月均收入', '车位采购单价', '税金成本', '项目总成本',
+        '我司总收入', '我司利润额', '客户利润额',
+    ];
+
     const dropZone = $('#drop-zone');
     const fileInput = $('#file-input');
     const filePreview = $('#file-preview');
@@ -11,6 +20,7 @@
     const removeBtn = $('#remove-file');
     const parsedPreview = $('#parsed-preview');
     const businessType = $('#business-type');
+    const enableLLM = $('#enable-llm');
     const startBtn = $('#start-btn');
     const statusBar = $('#status-bar');
     const statusText = $('#status-text');
@@ -104,32 +114,30 @@
         let html = '<table><tbody>';
         const rows = [
             ['车场名称', pi.car_park_name],
-            ['地址', pi.car_park_address],
-            ['合作方类型', pi.property_type],
-            ['承包到期', pi.contract_expire_date],
-            ['车位数量', pi.parking_spaces],
+            ['车场地址', pi.car_park_address],
+            ['合作客户主体', pi.property_type],
+            ['承包到期日期', pi.contract_expire_date],
+            ['停车场收费规则', pi.parking_fee_rule],
+            ['是否允许张贴物料', pi.allow_posting],
+            ['是否存在自有小程序/ETC支付渠道', pi.has_own_channel],
+            ['停车场车位数量', pi.parking_spaces],
         ];
 
         if (data.business_type === 'spot_exchange' && Object.keys(sec).length > 0) {
             rows.push(
                 ['车场业态', pi.business_nature],
-                ['收费规则', pi.parking_fee_rule],
-                ['设备金额', sec.equipment_amount ? '¥' + sec.equipment_amount.toLocaleString() : '-'],
+                ['车位占用率', pi.occupancy_rate || '-'],
+                ['结算模式', pi.settlement_mode || '-'],
+                ['设备、服务置换金额（元）', sec.equipment_amount ? '¥' + sec.equipment_amount.toLocaleString() : '-'],
+                ['对外办理月卡费用（元/月）', sec.monthly_card_fee ? '¥' + sec.monthly_card_fee.toLocaleString() + '/月' : '-'],
                 ['置换车位数', sec.replacement_spaces || '-'],
-                ['合同月数', sec.contract_months ? sec.contract_months + '个月' : '-'],
-                ['月卡费用', sec.monthly_card_fee ? '¥' + sec.monthly_card_fee.toLocaleString() + '/月' : '-'],
-                ['车位采购单价', sec.purchase_unit_price ? '¥' + sec.purchase_unit_price.toFixed(2) + '/月' : '-'],
-                ['项目总成本', sec.total_cost ? '¥' + Math.round(sec.total_cost).toLocaleString() : '-'],
-                ['我司总收入', sec.total_revenue ? '¥' + Math.round(sec.total_revenue).toLocaleString() : '-'],
-                ['我司利润额', sec.our_profit ? '¥' + Math.round(sec.our_profit).toLocaleString() : '-'],
+                ['回本后甲方分润比例', sec.profit_share_ratio !== null ? sec.profit_share_ratio : '-'],
+                ['合同有效年限（月）', sec.contract_months ? sec.contract_months + '个月' : '-'],
             );
         } else {
             rows.push(
-                ['自有渠道', pi.has_own_channel],
                 ['月均临停收入', pi.monthly_avg_temp ? '¥' + pi.monthly_avg_temp.toLocaleString() : '-'],
                 ['月均月票收入', pi.monthly_avg_ticket ? '¥' + pi.monthly_avg_ticket.toLocaleString() : '-'],
-                ['合同金额', ct.contract_amount ? '¥' + ct.contract_amount.toLocaleString() : '-'],
-                ['停车券总价值', ct.voucher_total_value ? '¥' + ct.voucher_total_value.toLocaleString() : '-'],
             );
         }
 
@@ -137,6 +145,35 @@
             html += `<tr><th>${k}</th><td>${v || '-'}</td></tr>`;
         });
         html += '</tbody></table>';
+
+        // 项目评估区
+        if (ct.overall_assessment || ct.evaluation_scores) {
+            html += '<h4 style="margin:12px 0 6px;font-size:13px;">项目评估</h4>';
+            // 评估概要表
+            html += '<table><tbody>';
+            html += `<tr><th>项目</th><th>数值</th><th>状态</th></tr>`;
+            const ratio = ct.monthly_consume_ratio != null ? (ct.monthly_consume_ratio * 100).toFixed(1) + '%' : '-';
+            html += `<tr><td>月均消耗比例</td><td>${ratio}</td><td>${ct.consume_ratio_status || '-'}</td></tr>`;
+            const discount = ct.actual_purchase_discount != null ? ct.actual_purchase_discount : '-';
+            const discountNote = ct.discount_range ? ` (${ct.discount_range})` : '';
+            html += `<tr><td>实际采买折扣</td><td>${discount}</td><td>${(ct.discount_status || '-') + discountNote}</td></tr>`;
+            html += `<tr><td>整体评估情况</td><td colspan="2">${ct.overall_assessment || '-'}</td></tr>`;
+            html += '</tbody></table>';
+
+            // 评分表
+            if (ct.evaluation_scores && ct.evaluation_scores.length > 0) {
+                html += '<table style="margin-top:8px;"><tbody>';
+                html += '<tr><th>所属类别</th><th>需填写</th><th>得分</th></tr>';
+                ct.evaluation_scores.forEach(s => {
+                    html += `<tr><td>${s.category}</td><td>${s.value || '-'}</td><td>${s.score || '-'}</td></tr>`;
+                });
+                if (ct.risk_rating) {
+                    html += `<tr><td><b>风险评分</b></td><td colspan="2"><b>${ct.risk_rating}</b></td></tr>`;
+                }
+                html += '</tbody></table>';
+            }
+        }
+
         parsedPreview.innerHTML = html;
     }
 
@@ -162,6 +199,7 @@
                 body: JSON.stringify({
                     session_id: sessionId,
                     business_type: businessType.value,
+                    enable_llm: enableLLM.checked,
                 }),
             });
             const data = await resp.json();
@@ -220,6 +258,10 @@
             const data = JSON.parse(e.data);
             if (data.markdown) {
                 fullResult = data.markdown;
+                // 调试：在控制台打印 LLM 输出
+                console.log('=== LLM 原始输出 ===');
+                console.log(fullResult);
+                console.log('=== 渲染后内容 ===');
                 resultContent.innerHTML = renderMarkdown(fullResult);
             }
         });
@@ -269,15 +311,56 @@
 
     // --- 简易 Markdown 渲染 ---
     function renderMarkdown(md) {
+        // 过滤掉包含"不输出内容"的段落（按标题分段处理）
+        const sections = md.split(/^(#{1,3}\s.+)$/gm);
+        const filteredSections = [];
+
+        for (let i = 0; i < sections.length; i++) {
+            const section = sections[i];
+            if (!section.trim()) continue;
+
+            // 检查该段落是否包含不输出的关键字
+            const hasExcluded = EXCLUDED_PATTERNS.some(pattern => section.includes(pattern));
+            if (!hasExcluded) {
+                filteredSections.push(section);
+            }
+        }
+        md = filteredSections.join('');
+
+        // Pre-process: convert inline C{n}【item】[status] description to table rows
+        md = md.replace(/^[ \t]*(C\d+)\s*【([^】]+)】\s*\[([^\]]+)\]\s*(.*)$/gm, '| $1 | $2 | $3 | | $4 |');
+
+        // Render all pipe-delimited blocks as tables
+        // Handles both: tables with headers (C1-C4) and standalone data blocks (C5+)
         let html = md
-            // 表格
-            .replace(/^\|(.+)\|\s*\n\|[-:\s|]+\|\s*\n((?:\|.+\|\s*\n)*)/gm, (match, header, body) => {
-                const ths = header.split('|').map(s => s.trim()).filter(Boolean).map(s => `<th>${s}</th>`).join('');
-                const rows = body.trim().split('\n').map(row => {
-                    const tds = row.split('|').map(s => s.trim()).filter(Boolean).map(s => `<td>${s}</td>`).join('');
-                    return `<tr>${tds}</tr>`;
-                }).join('');
-                return `<table><thead><tr>${ths}</tr></thead><tbody>${rows}</tbody></table>`;
+            .replace(/((?:^[ \t]*\|[^\n]+?\|[ \t]*(?:\n|$)){2,})/gm, (match, whole) => {
+                const lines = whole.trim().split('\n').map(l => l.trim()).filter(l => l);
+                if (lines.length < 2) return match;
+
+                // Detect header: contains "序号" or second line is a separator
+                const firstIsHeader = lines[0].includes('序号') || /^\|[\s\-:|]+\|$/.test(lines[1] || '');
+                let ths, dataStart;
+                if (firstIsHeader) {
+                    const headerParts = lines[0].split('|');
+                    ths = headerParts.slice(1, -1).map(s => s.trim()).map(s => `<th>${s}</th>`).join('');
+                    dataStart = /^\|[\s\-:|]+\|$/.test(lines[1]) ? 2 : 1;
+                } else {
+                    ths = '<th>序号</th><th>检查项</th><th>状态</th><th>资料数量</th><th>说明</th>';
+                    dataStart = 0;
+                }
+
+                const rows = [];
+                for (let i = dataStart; i < lines.length; i++) {
+                    const line = lines[i];
+                    if (!line.startsWith('|')) continue;
+                    if (/^\|[\s\-:|]+\|$/.test(line)) continue;
+                    const rowParts = line.split('|');
+                    const tds = rowParts.slice(1, -1).map(s => s.trim()).map(s => `<td>${s}</td>`).join('');
+                    rows.push(`<tr>${tds}</tr>`);
+                }
+
+                if (rows.length === 0) return match;
+                return `<table><thead><tr>${ths}</tr></thead><tbody>${rows.join('')}</tbody></table>`;
             })
             // 标题
             .replace(/^### (.+)$/gm, '<h3>$1</h3>')
@@ -298,10 +381,36 @@
 
     // --- 复制结果 ---
     copyBtn.addEventListener('click', () => {
-        navigator.clipboard.writeText(fullResult).then(() => {
+        const doCopy = (text) => {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.cssText = 'position:fixed;left:-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        };
+        const text = fullResult || resultContent.innerText;
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(() => {
+                    copyBtn.textContent = '已复制';
+                    setTimeout(() => { copyBtn.textContent = '复制'; }, 1500);
+                }).catch(() => {
+                    doCopy(text);
+                    copyBtn.textContent = '已复制';
+                    setTimeout(() => { copyBtn.textContent = '复制'; }, 1500);
+                });
+            } else {
+                doCopy(text);
+                copyBtn.textContent = '已复制';
+                setTimeout(() => { copyBtn.textContent = '复制'; }, 1500);
+            }
+        } catch {
+            doCopy(text);
             copyBtn.textContent = '已复制';
             setTimeout(() => { copyBtn.textContent = '复制'; }, 1500);
-        });
+        }
     });
 
     // --- 数据对比渲染 ---
@@ -389,7 +498,7 @@
             html += '<table class="comparison-table"><tbody>';
             const companyRows = [
                 ['企业名称', company.name],
-                ['参保人数', company.social_insurance_count != null ? company.social_insurance_count + '人' : '-'],
+                ['参保人数', company.social_insurance_count > 0 ? company.social_insurance_count + '人' : (company.error ? '需人工查询' : '-')],
                 ['经营状态', company.status],
                 ['注册资本', company.registered_capital],
                 ['成立日期', company.established_date],

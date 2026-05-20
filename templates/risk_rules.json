@@ -72,6 +72,20 @@
     }
   },
 
+  "allow_posting": {
+    "_comment": "是否允许张贴物料检查（两种业务通用）",
+    "rule": "不允许张贴物料视为风险项",
+    "pass": "允许 → ✅",
+    "fail": "不允许 → ❌ 风险：不允许张贴物料"
+  },
+
+  "has_own_channel": {
+    "_comment": "是否存在自有小程序/ETC支付渠道检查（两种业务通用）",
+    "rule": "存在自有小程序/ETC时，需在说明中备注可消耗收入占比计算方式",
+    "pass": "不存在 → 无需处理",
+    "note": "存在 → 在临停收入说明中备注：临停收入=【总计-微信小程序（开放平台）-ETC】/总计=可消耗收入占比"
+  },
+
   "company_lookup": {
     "_comment": "企查查查询",
     "output_fields": ["social_insurance_count", "status"],

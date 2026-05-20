@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>资源置换业务评估测算 — 解题报告</title>
+<style>
+  :root {
+    --primary: #1a56db;
+    --primary-light: #e8eefb;
+    --accent: #0e9f6e;
+    --accent-light: #e6f7f1;
+    --warn: #c27803;
+    --warn-light: #fdf6e3;
+    --danger: #e02424;
+    --text: #1f2937;
+    --text-secondary: #6b7280;
+    --border: #e5e7eb;
+    --bg: #f9fafb;
+    --card: #ffffff;
+    --radius: 12px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.7;
+  }
+
+  /* ---- Cover ---- */
+  .cover {
+    background: linear-gradient(135deg, #1e3a5f 0%, #1a56db 50%, #0e9f6e 100%);
+    color: #fff;
+    padding: 80px 40px;
+    text-align: center;
+  }
+  .cover h1 { font-size: 2.4em; font-weight: 700; letter-spacing: 2px; }
+  .cover .subtitle { font-size: 1.2em; opacity: .85; margin-top: 12px; }
+  .cover .meta { font-size: .9em; opacity: .65; margin-top: 32px; }
+
+  /* ---- Container ---- */
+  .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---- Section ---- */
+  .section { padding: 56px 0; }
+  .section + .section { border-top: 1px solid var(--border); }
+  .section-label {
+    display: inline-block;
+    font-size: .75em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--primary);
+    background: var(--primary-light);
+    padding: 4px 14px;
+    border-radius: 20px;
+    margin-bottom: 12px;
+  }
+  .section h2 { font-size: 1.8em; margin-bottom: 8px; }
+  .section .desc { color: var(--text-secondary); margin-bottom: 28px; }
+
+  /* ---- Cards ---- */
+  .card-grid { display: grid; gap: 20px; }
+  .grid-2 { grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); }
+  .grid-3 { grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); }
+  .grid-5 { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    transition: box-shadow .2s;
+  }
+  .card:hover { box-shadow: 0 4px 20px rgba(0,0,0,.07); }
+  .card h3 { font-size: 1.1em; margin-bottom: 8px; }
+  .card p, .card li { font-size: .92em; color: var(--text-secondary); }
+  .card ul { padding-left: 18px; margin-top: 6px; }
+  .card ul li + li { margin-top: 4px; }
+
+  /* ---- Stat card ---- */
+  .stat-card {
+    text-align: center;
+    padding: 28px 16px;
+  }
+  .stat-card .num {
+    font-size: 2.2em;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .stat-card .label { font-size: .85em; color: var(--text-secondary); margin-top: 4px; }
+
+  /* ---- Flow chart (CSS only) ---- */
+  .flow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    flex-wrap: wrap;
+    padding: 24px 0;
+  }
+  .flow-node {
+    background: var(--card);
+    border: 2px solid var(--primary);
+    border-radius: var(--radius);
+    padding: 14px 22px;
+    text-align: center;
+    font-weight: 600;
+    font-size: .95em;
+    min-width: 130px;
+  }
+  .flow-node.highlight {
+    background: var(--primary);
+    color: #fff;
+  }
+  .flow-node.accent {
+    border-color: var(--accent);
+  }
+  .flow-node.accent.highlight {
+    background: var(--accent);
+    color: #fff;
+  }
+  .flow-arrow {
+    font-size: 1.5em;
+    color: var(--text-secondary);
+    margin: 0 6px;
+  }
+
+  /* ---- Architecture diagram ---- */
+  .arch-box {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 32px;
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+    font-size: .88em;
+    line-height: 1.6;
+    overflow-x: auto;
+    white-space: pre;
+  }
+
+  /* ---- Challenge / Solution pairs ---- */
+  .problem-solution {
+    border-left: 4px solid var(--primary);
+    padding: 20px 24px;
+    background: var(--card);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    margin-bottom: 24px;
+  }
+  .problem-solution .tag {
+    font-size: .75em;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: 10px;
+    display: inline-block;
+    margin-bottom: 6px;
+  }
+  .tag-challenge { background: #fde8e8; color: var(--danger); }
+  .tag-solution { background: var(--accent-light); color: var(--accent); }
+  .problem-solution h3 { font-size: 1.05em; margin-bottom: 6px; }
+  .problem-solution p { font-size: .92em; color: var(--text-secondary); }
+
+  /* ---- Table ---- */
+  .styled-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .92em;
+    background: var(--card);
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .styled-table thead { background: var(--primary-light); }
+  .styled-table th {
+    text-align: left;
+    padding: 12px 16px;
+    font-weight: 600;
+    color: var(--primary);
+  }
+  .styled-table td {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+  }
+  .styled-table tbody tr:hover { background: #f3f4f6; }
+  .badge {
+    display: inline-block;
+    font-size: .78em;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: 10px;
+  }
+  .badge-blue { background: var(--primary-light); color: var(--primary); }
+  .badge-green { background: var(--accent-light); color: var(--accent); }
+  .badge-orange { background: var(--warn-light); color: var(--warn); }
+
+  /* ---- Timeline ---- */
+  .timeline { position: relative; padding-left: 32px; }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 12px; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--border);
+    border-radius: 3px;
+  }
+  .timeline-item { position: relative; margin-bottom: 28px; }
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -25px; top: 6px;
+    width: 13px; height: 13px;
+    border-radius: 50%;
+    background: var(--primary);
+    border: 3px solid var(--primary-light);
+  }
+  .timeline-item h4 { font-size: 1em; }
+  .timeline-item p { font-size: .9em; color: var(--text-secondary); margin-top: 4px; }
+
+  /* ---- Footer ---- */
+  .footer {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-secondary);
+    font-size: .85em;
+    border-top: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+
+<!-- ==================== COVER ==================== -->
+<div class="cover">
+  <h1>资源置换业务评估测算</h1>
+  <div class="subtitle">AI 驱动的自动化审核解题报告</div>
+  <div class="meta">2026 年 5 月</div>
+</div>
+
+<div class="container">
+
+<!-- ==================== 1. 背景 ==================== -->
+<div class="section">
+  <div class="section-label">Part 1</div>
+  <h2>业务背景</h2>
+  <p class="desc">资源置换是停车场的核心商业合作模式——合作方以设备安装、停车券采买、车位置换等方式获取停车场运营权益。每一笔合作都需要运营人员对合作方提交的测算数据进行逐项审核，确保数据真实、风险可控。</p>
+
+  <div class="card-grid grid-3" style="margin-top:20px">
+    <div class="card">
+      <h3>停车券业务</h3>
+      <p>合作方以约定折扣采买停车券，运营需核对后台临停、月票收入是否与测算表一致，验证消耗比例是否达标。</p>
+    </div>
+    <div class="card">
+      <h3>车位置换业务</h3>
+      <p>合作方以设备安装置换车位经营权，运营需复核外部月卡定价、分成比例、合同期限等关键条款。</p>
+    </div>
+    <div class="card">
+      <h3>非艾科车场</h3>
+      <p>无法直连后台数据，需依赖业务提供的信息复核，运营需自行搜集周边车场收费信息，结合位置、业态综合评估。</p>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 2. 挑战 ==================== -->
+<div class="section">
+  <div class="section-label">Part 2</div>
+  <h2>五大核心挑战</h2>
+  <p class="desc">现有审核流程高度依赖人工，效率低、易出错、标准不统一。</p>
+
+  <div style="margin-top:20px">
+    <div class="problem-solution">
+      <span class="tag tag-challenge">挑战 1</span>
+      <h3>后台数据获取分散，缺乏统一报表</h3>
+      <p>新车场周边数据需逐个登录 BEM（智泊云）后台获取临停收入、月票收入、票种信息，每个车场要手动切换、导出，耗时且容易遗漏。</p>
+    </div>
+    <div class="problem-solution">
+      <span class="tag tag-challenge">挑战 2</span>
+      <h3>各方数据格式不统一，分析困难</h3>
+      <p>业务提交的测算表模板版本多样（停车券/车位置换/折扣采买），字段位置、sheet 结构差异大，人工对齐费时费力。</p>
+    </div>
+    <div class="problem-solution">
+      <span class="tag tag-challenge">挑战 3</span>
+      <h3>业务提交前缺乏自检，反复退回</h3>
+      <p>业务人员提交的测算数据常存在字段缺失、数据异常等问题，运营复审时才发现退回，导致沟通反复、流程拉长。</p>
+    </div>
+    <div class="problem-solution">
+      <span class="tag tag-challenge">挑战 4</span>
+      <h3>承包期/产权方经营风险难以量化</h3>
+      <p>需评估合作方承包期限是否覆盖合同期、企业社保人数是否异常、注册资本与经营规模是否匹配等，依赖运营经验判断。</p>
+    </div>
+    <div class="problem-solution">
+      <span class="tag tag-challenge">挑战 5</span>
+      <h3>缺乏智能初评体系</h3>
+      <p>审核标准散落在运营人员经验中，无标准化流程；审核质量因人而异，新人上手周期长。</p>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 3. 解决方案 ==================== -->
+<div class="section">
+  <div class="section-label">Part 3</div>
+  <h2>解决方案总览</h2>
+  <p class="desc">构建 "AI + 固化脚本" 的混合架构，让 LLM 像资深运营一样自主完成初审流程。</p>
+
+  <div class="flow" style="margin-top:20px">
+    <div class="flow-node highlight">上传测算表</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-node">智能解析</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-node">数据完整性检查</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-node">BEM 数据抓取</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-node">企查查核查</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-node accent highlight">AI 初审报告</div>
+  </div>
+
+  <div class="card-grid grid-2" style="margin-top:32px">
+    <div class="card">
+      <h3>核心思路：AI 编排 + Skills 分层</h3>
+      <ul>
+        <li>LLM（DeepSeek）作为 "AI 编排器"，通过 Function Calling 自主决定审核节奏</li>
+        <li>数据获取层用 Playwright 固化脚本隔离浏览器不稳定因素</li>
+        <li>审核规则外置为 JSON/Markdown 配置，业务调整不改代码</li>
+        <li>全程 SSE 流式输出，运营可实时观察审核过程</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>设计原则</h3>
+      <ul>
+        <li><strong>程序做程序擅长的事</strong>：Excel 解析、数据对比、表格构建用确定性代码</li>
+        <li><strong>AI 做 AI 擅长的事</strong>：异常识别、风险研判、自然语言输出用 LLM</li>
+        <li><strong>人做最终决策</strong>：系统输出初审结果，运营确认后归档</li>
+        <li><strong>渐进式自动化</strong>：先固化高频操作，再逐步扩大 AI 自主权</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 4. 架构 ==================== -->
+<div class="section">
+  <div class="section-label">Part 4</div>
+  <h2>系统架构</h2>
+  <p class="desc">采用 Harness + Skills 架构，Web 层、AI 编排层、技能层三层解耦。</p>
+
+  <div class="arch-box" style="margin-top:20px">
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Web 层 (FastAPI + SSE)                       │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌───────────────────┐  │
+│  │ 文件上传  │  │ 数据预览  │  │ SSE 流式  │  │ 数据对比可视化    │  │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────────┬──────────┘  │
+│       │              │              │                  │            │
+│       └──────────────┴──────┬───────┴──────────────────┘            │
+│                             ▼                                      │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │              AI Orchestrator (LLM + Function Calling)         │  │
+│  │                                                              │  │
+│  │  System Prompt = prompts/* + skills/*/skill.md + rules.json  │  │
+│  │                                                              │  │
+│  │  Tools:                                                      │  │
+│  │    • fetch_bem_data(car_park_name, date_range)                │  │
+│  │    • lookup_company(company_name)                             │  │
+│  │                                                              │  │
+│  │  程序化构建: _build_comparison() → Excel vs BEM 对比表         │  │
+│  └──────────┬───────────────────────┬────────────────────────────┘  │
+│             │                       │                               │
+│             ▼                       ▼                               │
+│  ┌─────────────────┐   ┌──────────────────┐                        │
+│  │  Skill Runner    │   │  Excel Parser     │                       │
+│  │  (subprocess)    │   │  (标签关键词定位)   │                       │
+│  └────────┬────────┘   └──────────────────┘                        │
+│           │                                                        │
+│     ┌─────┴──────┐                                                │
+│     ▼            ▼                                                │
+│  ┌────────┐  ┌──────────┐                                        │
+│  │BEM 抓取 │  │企查查查询  │                                       │
+│  │Playwright│ │Playwright │                                       │
+│  │+OCR 验证码│ │           │                                       │
+│  └────────┘  └──────────┘                                        │
+└─────────────────────────────────────────────────────────────────────┘</div>
+</div>
+
+<!-- ==================== 5. 逐项解题 ==================== -->
+<div class="section">
+  <div class="section-label">Part 5</div>
+  <h2>逐项解题</h2>
+  <p class="desc">针对五大挑战，逐一说明解决方案与技术实现。</p>
+
+  <div style="margin-top:24px">
+
+    <!-- 挑战 1 -->
+    <div class="problem-solution">
+      <span class="tag tag-solution">解题 1</span>
+      <h3>BEM 数据自动化抓取 — 从手动登录到一键获取</h3>
+      <p>
+        <strong>方案：</strong>通过 Playwright 固化脚本自动化登录 BEM（智泊云）后台，解决验证码（ddddocr OCR 识别）、二次跳转等复杂认证流程。
+        一次审核自动获取三类报表：<strong>临停收入</strong>（按支付渠道分月明细）、<strong>月票收入</strong>（含趋势分析）、<strong>票种信息</strong>（内外部分类、在用数量）。
+        脚本以子进程隔离运行，浏览器崩溃不影响 Web 服务。
+      </p>
+      <p style="margin-top:8px">
+        <strong>效果：</strong>运营无需手动登录后台，审核流程中 LLM 自动调用 <code>fetch_bem_data</code> 工具触发抓取，数据直接参与对比分析。
+      </p>
+    </div>
+
+    <!-- 挑战 2 -->
+    <div class="problem-solution">
+      <span class="tag tag-solution">解题 2</span>
+      <h3>智能 Excel 解析 — 标签定位替代固定行号</h3>
+      <p>
+        <strong>方案：</strong>解析器采用<strong>标签关键词查找</strong>（<code>_find_label_row</code>）而非硬编码行号，兼容不同版本格式的 Excel 模板。
+        自动识别业务类型（停车券 / 车位置换 / 折扣采买），支持多 Sheet 结构解析。
+        解析结果输出标准化 JSON，供后续 LLM 审核和数据对比使用。
+      </p>
+      <p style="margin-top:8px">
+        <strong>效果：</strong>无论业务提交哪种模板格式，系统都能自动解析出结构化数据，消除格式差异带来的分析障碍。
+      </p>
+    </div>
+
+    <!-- 挑战 3 -->
+    <div class="problem-solution">
+      <span class="tag tag-solution">解题 3</span>
+      <h3>数据完整性前置检查 — 提交即检，减少退回</h3>
+      <p>
+        <strong>方案：</strong>必填字段定义外置为 <code>fields_required.json</code>，审核流程第一阶段即为完整性检查。
+        LLM 对照必填字段清单逐项校验，输出已填字段（通过）和缺失字段（需补充），未通过完整性检查的项目不予进入数据对比环节。
+      </p>
+      <p style="margin-top:8px">
+        <strong>效果：</strong>业务提交后秒级反馈缺失项，无需等运营人工复核才发现问题，大幅减少退回往返次数。
+      </p>
+    </div>
+
+    <!-- 挑战 4 -->
+    <div class="problem-solution">
+      <span class="tag tag-solution">解题 4</span>
+      <h3>企业风险量化评估 — 自动化企查查核查</h3>
+      <p>
+        <strong>方案：</strong>LLM 通过 <code>lookup_company</code> 工具调用 Playwright 脚本查询启信宝，自动获取合作方的<strong>社保缴纳人数、经营状态、注册资本、成立日期</strong>。
+        同时在审核规则中明确：合同期限需在承包期限内、车位置换合同期需 ≥ 36 个月等硬性约束。
+        审核结果输出中对社保人数异常、期限不匹配等风险进行标注。
+      </p>
+      <p style="margin-top:8px">
+        <strong>效果：</strong>原本需要运营手动查询、靠经验判断的风险点，现在由系统自动获取数据并给出风险提示，降低人为遗漏概率。
+      </p>
+    </div>
+
+    <!-- 挑战 5 -->
+    <div class="problem-solution">
+      <span class="tag tag-solution">解题 5</span>
+      <h3>AI 驱动的标准化初审体系</h3>
+      <p>
+        <strong>方案：</strong>将审核经验沉淀为三类可维护的配置文件：
+        <strong>审核清单</strong>（<code>audit_checklist_*.md</code>，分业务类型的检查项）、
+        <strong>风险规则</strong>（<code>risk_rules.json</code>，5% 容差、36 月最低期限等量化标准）、
+        <strong>输出模板</strong>（<code>output_template.md</code>，统一的状态标记和格式）。
+        LLM 按 "完整性检查 → 数据对比 → 风险评估 → 输出报告" 的标准化流程执行审核，System Prompt 由 8 个配置文件动态拼接。
+      </p>
+      <p style="margin-top:8px">
+        <strong>效果：</strong>审核标准不再依赖个人经验，新人也能在 AI 辅助下产出高质量初审结果；规则调整只需改配置文件，无需动代码。
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 6. 核心能力 ==================== -->
+<div class="section">
+  <div class="section-label">Part 6</div>
+  <h2>核心能力矩阵</h2>
+  <p class="desc">五大 Skill 模块覆盖审核全流程。</p>
+
+  <table class="styled-table" style="margin-top:20px">
+    <thead>
+      <tr>
+        <th>Skill</th>
+        <th>类型</th>
+        <th>能力说明</th>
+        <th>技术实现</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>bem-fetch</strong></td>
+        <td><span class="badge badge-blue">脚本驱动</span></td>
+        <td>自动登录 BEM 后台，获取临停收入、月票收入、票种信息</td>
+        <td>Playwright + ddddocr 验证码识别</td>
+      </tr>
+      <tr>
+        <td><strong>company-lookup</strong></td>
+        <td><span class="badge badge-blue">脚本驱动</span></td>
+        <td>查询合作方企业信息：社保人数、经营状态、注册资本</td>
+        <td>Playwright 抓取启信宝</td>
+      </tr>
+      <tr>
+        <td><strong>completeness-check</strong></td>
+        <td><span class="badge badge-green">Prompt 驱动</span></td>
+        <td>对照必填字段清单校验数据完整性</td>
+        <td>LLM 对照 fields_required.json</td>
+      </tr>
+      <tr>
+        <td><strong>audit-parking-voucher</strong></td>
+        <td><span class="badge badge-green">Prompt 驱动</span></td>
+        <td>停车券业务 6 项审核：收入对比、合同期、消耗比例等</td>
+        <td>LLM + 风险规则引擎</td>
+      </tr>
+      <tr>
+        <td><strong>audit-spot-exchange</strong></td>
+        <td><span class="badge badge-green">Prompt 驱动</span></td>
+        <td>车位置换业务 9 项审核：外部月卡、分成比例、车位数量等</td>
+        <td>LLM + 风险规则引擎</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ==================== 7. 审核流程 ==================== -->
+<div class="section">
+  <div class="section-label">Part 7</div>
+  <h2>审核执行流程</h2>
+  <p class="desc">LLM 通过 Function Calling 自主编排审核步骤，无硬编码状态机。</p>
+
+  <div class="timeline" style="margin-top:24px">
+    <div class="timeline-item">
+      <h4>Step 1 — 上传 & 解析</h4>
+      <p>运营拖拽上传 Excel → <code>excel_parser.py</code> 自动识别业务类型、解析为结构化 JSON → 前端展示数据预览表格</p>
+    </div>
+    <div class="timeline-item">
+      <h4>Step 2 — System Prompt 组装</h4>
+      <p>根据业务类型动态拼接 8 个配置文件：角色定义 + 字段规则 + 审核清单 + 风险规则 + 必填字段 + 完整性检查 + 业务审核 Skill + 输出模板</p>
+    </div>
+    <div class="timeline-item">
+      <h4>Step 3 — LLM 自主审核</h4>
+      <p>LLM 接收结构化数据，通过 Function Calling 决定何时调用 <code>fetch_bem_data</code>（获取 BEM 报表）和 <code>lookup_company</code>（查询企业信息），流式输出分析过程</p>
+    </div>
+    <div class="timeline-item">
+      <h4>Step 4 — 程序化数据对比</h4>
+      <p><code>_build_comparison()</code> 构建 Excel vs BEM 的逐月对比：临停收入（5% 容差）、月票收入（全零跳过）、趋势分析（近 3 月 vs 前 3 月 >10% 预警）</p>
+    </div>
+    <div class="timeline-item">
+      <h4>Step 5 — 输出初审报告</h4>
+      <p>LLM 输出结构化 Markdown 报告，每项标注状态（通过/预警/风险/人工确认/跳过），前端实时渲染并展示数据对比可视化图表</p>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 8. 技术亮点 ==================== -->
+<div class="section">
+  <div class="section-label">Part 8</div>
+  <h2>技术亮点</h2>
+  <p class="desc">关键设计决策与创新点。</p>
+
+  <div class="card-grid grid-3" style="margin-top:20px">
+    <div class="card">
+      <h3>LLM 无状态机编排</h3>
+      <p>不预设审核步骤顺序，LLM 通过 Function Calling 自主决定调用工具的时机和顺序，更灵活地应对各种业务场景。</p>
+    </div>
+    <div class="card">
+      <h3>子进程隔离</h3>
+      <p>BEM 和企查查脚本以子进程运行，Playwright 浏览器崩溃不影响 Web 服务稳定性。</p>
+    </div>
+    <div class="card">
+      <h3>验证码自动识别</h3>
+      <p>集成 ddddocr 做 BEM 登录验证码 OCR，支持最多 10 次重试，解决登录自动化最大障碍。</p>
+    </div>
+    <div class="card">
+      <h3>标签定位解析</h3>
+      <p>Excel 解析用关键词查找而非固定行号，天然兼容模板格式变化，降低维护成本。</p>
+    </div>
+    <div class="card">
+      <h3>规则外置可配</h3>
+      <p>风险规则、必填字段、输出模板均为独立配置文件，业务调整只需改配置，无需改代码重新部署。</p>
+    </div>
+    <div class="card">
+      <h3>SSE 流式交互</h3>
+      <p>全程 Server-Sent Events 实时推送审核状态、LLM 输出、工具调用进度，运营可观察审核过程而非等待黑箱结果。</p>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 9. 量化成果 ==================== -->
+<div class="section">
+  <div class="section-label">Part 9</div>
+  <h2>预期成效</h2>
+  <p class="desc">系统上线后，审核效率与质量的可预期提升。</p>
+
+  <div class="card-grid grid-5" style="margin-top:20px">
+    <div class="card stat-card">
+      <div class="num">0</div>
+      <div class="label">手动登录后台次数</div>
+    </div>
+    <div class="card stat-card">
+      <div class="num">5%</div>
+      <div class="label">收入对比容差阈值</div>
+    </div>
+    <div class="card stat-card">
+      <div class="num">6+9</div>
+      <div class="label">审核检查项（券/车位）</div>
+    </div>
+    <div class="card stat-card">
+      <div class="num">8</div>
+      <div class="label">动态拼接配置文件</div>
+    </div>
+    <div class="card stat-card">
+      <div class="num">3</div>
+      <div class="label">自动获取报表类型</div>
+    </div>
+  </div>
+
+  <table class="styled-table" style="margin-top:28px">
+    <thead>
+      <tr>
+        <th>维度</th>
+        <th>改造前</th>
+        <th>改造后</th>
+        <th>提升</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>后台数据获取</td>
+        <td>逐个手动登录、切换车场、截图/导出</td>
+        <td>自动登录 + 一键获取三类报表</td>
+        <td><span class="badge badge-green">效率大幅提升</span></td>
+      </tr>
+      <tr>
+        <td>Excel 数据处理</td>
+        <td>人工逐项对齐不同模板格式</td>
+        <td>标签定位自动解析，输出标准化 JSON</td>
+        <td><span class="badge badge-green">消除格式障碍</span></td>
+      </tr>
+      <tr>
+        <td>数据完整性检查</td>
+        <td>运营复核时才发现缺失，退回补充</td>
+        <td>提交秒级检查，即时反馈缺失项</td>
+        <td><span class="badge badge-orange">减少往返</span></td>
+      </tr>
+      <tr>
+        <td>风险评估</td>
+        <td>依赖运营个人经验判断</td>
+        <td>量化规则 + 企业自动核查 + LLM 异常识别</td>
+        <td><span class="badge badge-green">标准化+可追溯</span></td>
+      </tr>
+      <tr>
+        <td>审核标准一致性</td>
+        <td>因人而异，新人上手周期长</td>
+        <td>配置化规则 + AI 统一执行</td>
+        <td><span class="badge badge-green">质量一致</span></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ==================== 10. 未来展望 ==================== -->
+<div class="section">
+  <div class="section-label">Part 10</div>
+  <h2>未来演进方向</h2>
+  <p class="desc">当前系统已建立自动化审核基座，后续可在此基础上持续扩展。</p>
+
+  <div class="card-grid grid-2" style="margin-top:20px">
+    <div class="card">
+      <h3>非艾科车场数据接入</h3>
+      <p>当前非艾科车场依赖业务提供数据。后续可对接更多停车管理系统（如科拓、捷顺），扩大自动数据获取覆盖面。</p>
+    </div>
+    <div class="card">
+      <h3>历史审核数据积累</h3>
+      <p>将初审结果和运营最终判定归档，积累标注数据，为后续 Fine-tune 或 RAG 增强提供基础。</p>
+    </div>
+    <div class="card">
+      <h3>周边车场智能评估</h3>
+      <p>接入地图 API 和公开停车费数据，为新车场自动生成周边竞品分析，辅助运营做综合评估。</p>
+    </div>
+    <div class="card">
+      <h3>多租户 & 权限管理</h3>
+      <p>增加用户体系，支持业务自提交 + 运营审核的协作模式，实现端到端的流程闭环。</p>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<!-- ==================== Footer ==================== -->
+<div class="footer">
+  资源置换业务评估测算系统 · 解题报告 · 2026.05
+</div>
+
+</body>
+</html>

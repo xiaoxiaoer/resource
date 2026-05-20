@@ -24,6 +24,7 @@ async def audit_stream(session_id: str):
             async for event_str in run_audit(
                 business_type=session.business_type,
                 parsed_data=session.parsed_data,
+                enable_llm=session.enable_llm,
             ):
                 yield event_str
 

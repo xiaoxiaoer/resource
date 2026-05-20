@@ -7,6 +7,7 @@ AI 编排器 — 核心模块
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -14,6 +15,8 @@ from openai import AsyncOpenAI
 
 from web.config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, PROMPTS_DIR, TEMPLATES_DIR, SKILLS_DIR
 from web.services.skill_runner import run_bem_fetch, run_company_lookup
+from web.services.validators import run_validation, render_markdown
+from web.services.validators.rules_common import _is_generic_property_type
 
 # --- 工具定义（OpenAI function calling 格式） ---
 
@@ -63,6 +66,68 @@ def _load_file(path: Path) -> str:
     if path.exists():
         return path.read_text(encoding='utf-8')
     return ''
+
+
+def _filter_llm_output(business_type: str, markdown: str) -> str:
+    """过滤 LLM 输出，移除不符合 audit_field_rules.md 的内容"""
+    # 不输出的字段（中文名）
+    excluded_terms = [
+        '合同金额', '停车券总价值', '停车券月均分摊', '月均收入合计',
+        '项目整体毛利', '设备预估毛利', '项目毛利',
+        '单车位月均收入', '车位采购单价', '税金成本', '项目总成本',
+        '我司总收入', '我司利润额', '客户利润额',
+        '录入折扣率', '实际采购折扣', '实付比例',
+        '设备服务金额', '录入折扣', '折扣采买金额',
+        'crm_quote_no', 'crm_m_factor', 'crm_settlement_total', 'crm_service_fee',
+    ]
+
+    lines = markdown.split('\n')
+    filtered_lines = []
+
+    # 只保留基本信息、检查结果、项目评估、趋势分析、总结这几个区域
+    allowed_sections = [
+        '基本信息', '检查结果', '项目评估', '趋势分析', '总结',
+    ]
+    current_section = None
+
+    for line in lines:
+        # 检查是否进入新的区域（以 # 开头）
+        section_match = re.match(r'^#+\s*(.+)$', line)
+        if section_match:
+            section_name = section_match.group(1).strip()
+            if section_name in allowed_sections:
+                current_section = section_name
+            else:
+                current_section = None
+
+        # 如果不在允许的区域，跳过
+        if current_section is None:
+            continue
+
+        # 移除包含不输出字段的行
+        if any(term in line for term in excluded_terms):
+            continue
+
+        # 移除 "审核人" 等个人信息行
+        if '审核人' in line or '审核时间' in line:
+            continue
+
+        # 移除表格中的违规列（简单判断）
+        # 如果一行是表格分隔符或表格内容，检查是否包含违规字段
+        if '---' not in line and '|' in line:
+            # 检查是否是表格行
+            parts = line.split('|')
+            # 如果有 4 个以上部分，且包含违规字段，则整行跳过
+            if len(parts) > 4 and any(term in line for term in excluded_terms):
+                continue
+
+        filtered_lines.append(line)
+
+    # 移除空段落
+    result = '\n'.join(filtered_lines)
+    result = re.sub(r'\n{3,}', '\n\n', result)
+
+    return result
 
 
 def _build_system_prompt(business_type: str) -> str:
@@ -135,6 +200,46 @@ def _build_system_prompt(business_type: str) -> str:
 3. 按检查清单逐项对比分析，每项给出 ✅/⚠️/❌/📋 标记
 4. 按输出模板格式输出完整审核结果
 5. 业务类型为：{"停车券业务" if business_type == "parking_voucher" else "车位置换业务"}
+
+---
+
+## 字段名称规范（严格按 Excel 表格标签）
+
+审核结果中引用的字段名称必须与上传的 Excel 表格标签完全一致，不得随意变更或简化。
+
+**停车券业务字段名**：
+- 车场名称
+- 车场地址
+- 合作客户主体
+- 承包到期日期
+- 停车场收费规则
+- 是否允许张贴物料
+- 是否存在自有小程序/ETC支付渠道
+- 停车场车位数量
+- 临停收入（或：月均临停收入）
+- 月票收入（或：月均月票收入）
+- 合同有效年限（月）
+- 券消耗年限（月）
+- 增值税专用发票
+
+**车位置换业务字段名**：
+- 车场名称
+- 车场地址
+- 车场业态
+- 合作客户主体
+- 承包到期日期
+- 停车场收费规则
+- 车位占用率
+- 是否允许张贴物料
+- 结算模式
+- 临停收入
+- 月票收入
+- 设备、服务置换金额（元）
+- 增值税专用发票
+- 对外办理月卡费用（元/月）
+- 置换车位数
+- 回本后甲方分润比例
+- 合同有效年限（月）
 """
 
 
@@ -327,29 +432,116 @@ def _build_comparison(parsed_data: dict, tool_results: list[dict]) -> dict:
     return comparison
 
 
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+async def _run_audit_fixed(
+    business_type: str,
+    parsed_data: dict,
+) -> AsyncGenerator[str, None]:
+    """程序化校验路径：调用 BEM/企查查取数据 → run_validation → render_markdown。"""
+    pi = parsed_data.get('project_info') or {}
+    car_park_name = pi.get('car_park_name', '')
+    property_type = pi.get('property_type', '')
+
+    yield _sse("status", {"phase": "fetching_bem"})
+
+    bem_result: dict | None = None
+    company_result: dict | None = None
+    tool_results: list[dict] = []
+
+    # 1. BEM 数据
+    if car_park_name:
+        yield _sse("tool_call", {
+            "tool": "fetch_bem_data",
+            "args": {"car_park_name": car_park_name},
+            "status": "running",
+        })
+        try:
+            bem_result = await run_bem_fetch(car_park_name=car_park_name)
+        except Exception as e:
+            bem_result = {'status': 'error', 'error': str(e)}
+        yield _sse("tool_call", {
+            "tool": "fetch_bem_data",
+            "args": {"car_park_name": car_park_name},
+            "status": "done",
+        })
+        tool_results.append({
+            "role": "tool",
+            "tool_call_id": "bem_1",
+            "content": json.dumps(bem_result, ensure_ascii=False),
+        })
+
+    # 2. 企查查（仅当合作主体是具体公司名时）
+    if property_type and not _is_generic_property_type(property_type):
+        yield _sse("tool_call", {
+            "tool": "lookup_company",
+            "args": {"company_name": property_type},
+            "status": "running",
+        })
+        try:
+            company_result = await run_company_lookup(company_name=property_type)
+        except Exception as e:
+            company_result = {'status': 'error', 'error': str(e)}
+        yield _sse("tool_call", {
+            "tool": "lookup_company",
+            "args": {"company_name": property_type},
+            "status": "done",
+        })
+        tool_results.append({
+            "role": "tool",
+            "tool_call_id": "company_1",
+            "content": json.dumps(company_result, ensure_ascii=False),
+        })
+
+    # 3. 数据对比（前端有专门渲染）
+    if tool_results:
+        comparison = _build_comparison(parsed_data, tool_results)
+        yield _sse("comparison_data", comparison)
+
+    # 4. 程序化校验 + Markdown 渲染
+    yield _sse("status", {"phase": "validating"})
+    result = run_validation(business_type, parsed_data, bem_result, company_result)
+    markdown = render_markdown(result)
+    yield _sse("result", {"markdown": markdown})
+    yield _sse("done", {})
+
+
 async def run_audit(
     business_type: str,
     parsed_data: dict,
+    *,
+    enable_llm: bool = False,
     yield_event=None,
 ) -> AsyncGenerator[str, None]:
     """
-    AI 驱动的审核流程。
+    审核流程入口。
 
-    通过 SSE 事件流式输出：
-    - yield_event(event_type, data) 由调用方提供
+    enable_llm=False（默认）：纯程序化校验，BEM/企查查仍调用作为数据采集
+    enable_llm=True：走 LLM function calling 流程（旧逻辑）
 
-    返回 AsyncGenerator[str] 产出 SSE 格式的事件字符串。
+    通过 SSE 事件流式输出。
     """
+    if not enable_llm:
+        async for evt in _run_audit_fixed(business_type, parsed_data):
+            yield evt
+        return
+
+    # === LLM 增强路径（保留原逻辑） ===
     system_prompt = _build_system_prompt(business_type)
 
     car_park_name = parsed_data.get('project_info', {}).get('car_park_name', '')
+    company_name = parsed_data.get('project_info', {}).get('property_type', '')
     user_content = f"""# 上传的车场资料数据
 
 ```json
 {json.dumps(parsed_data, ensure_ascii=False, indent=2)}
 ```
 
-**重要**：调用 fetch_bem_data 时，car_park_name 必须使用上方数据中 project_info.car_park_name 的值「{car_park_name}」，不要使用文件名中的车场名称。
+**重要字段说明**：
+- `project_info.car_park_name`：停车场名称，调用 fetch_bem_data 时使用此值「{car_park_name}」
+- `project_info.property_type`：**合作客户主体**（公司名称），调用 lookup_company 时使用此值「{company_name}」
 
 请按照检查清单和风险规则，完成审核并输出结果。"""
 
@@ -425,7 +617,10 @@ async def run_audit(
                 if current_text:
                     messages.append({"role": "assistant", "content": current_text})
 
-                yield sse("result", {"markdown": full_text})
+                # 过滤 LLM 输出
+                filtered_text = _filter_llm_output(business_type, full_text)
+
+                yield sse("result", {"markdown": filtered_text})
                 yield sse("done", {})
                 return
 

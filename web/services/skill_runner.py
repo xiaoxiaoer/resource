@@ -15,7 +15,7 @@ from web.config import SKILLS_DIR
 logger = logging.getLogger(__name__)
 
 BEM_SCRIPT = SKILLS_DIR / 'bem-fetch' / 'scripts' / 'fetch_all_reports.py'
-COMPANY_SCRIPT = SKILLS_DIR / 'company-lookup' / 'scripts' / 'query_qichacha.py'
+COMPANY_SCRIPT = SKILLS_DIR / 'company-lookup' / 'scripts' / 'query_company_baidu.py'
 
 
 async def run_bem_fetch(car_park_name: str, date_range: str | None = None) -> dict:

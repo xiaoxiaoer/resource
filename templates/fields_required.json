@@ -109,7 +109,7 @@
       },
       {
         "key": "vat_rate",
-        "label": "增值税专用发票",
+        "label": "增值税普通发票",
         "required": true,
         "type": "number"
       },

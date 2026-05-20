@@ -118,9 +118,7 @@ def _parse_ticket_rows(data: dict) -> list[dict]:
             continue
         monthly.append({
             'month': row.get('reportDateStr', ''),
-            'ticket_income': float(row.get('timeTicketTotalIncome', 0) or 0),
-            'open_amount': float(row.get('openActualAmount', 0) or 0),
-            'renew_amount': float(row.get('renewActualAmount', 0) or 0),
+            'ticket_income': float(row.get('onlineTotalActualAmount', 0) or 0),
         })
     return monthly
 

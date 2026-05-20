@@ -15,6 +15,7 @@ class AuditSession:
     business_type: str = ""  # parking_voucher / spot_exchange
     status: str = "created"  # created / parsing / ready / running / completed / error
     result: str = ""
+    enable_llm: bool = False  # 是否启用 LLM 增强分析
     created_at: float = field(default_factory=time.time)
 
 
