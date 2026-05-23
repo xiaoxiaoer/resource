@@ -53,3 +53,85 @@
 两个测试文件均正常解析：
 - 云禧园：overall_assessment=利润高风险可控，risk_rating=风险可控
 - 西部建材城：overall_assessment=利润高风险高，risk_rating=风险高
+
+---
+---
+
+# 会话要点汇总 (2026-05-23)
+
+## 1. 月度收入只保留有实际数据的月份
+
+**问题**：解析 Excel 后 `monthly_income` 包含 12 条记录，但其中 4-12 月的收入数据为空（temp_income 和 ticket_income 都是 None）。
+
+**修复**：`web/services/excel_parser.py` 的 `parse_project_info()` 和 `parse_project_info_collection()` 两个函数，在遍历月度数据时增加判断——只有 `temp_income` 和 `ticket_income` 至少一个非空才保留该月。
+
+修改前：
+```python
+for row in range(header_row + 1, header_row + 13):
+    month = _safe_int(_cell_num(ws, row, 1))
+    if month is None:
+        continue
+    monthly_income.append({...})
+```
+
+修改后：
+```python
+for row in range(header_row + 1, header_row + 13):
+    month = _safe_int(_cell_num(ws, row, 1))
+    if month is None:
+        continue
+    temp = _cell_num(ws, row, 2)
+    ticket = _cell_num(ws, row, 3)
+    if temp is None and ticket is None:
+        continue
+    monthly_income.append({...})
+```
+
+**效果**：云禧园文件解析后 `monthly_income` 从 12 条变为 3 条（1-3 月）。
+
+---
+
+## 2. 月度收入完整性检查规则适配
+
+**问题**：`check_monthly_income_completeness` 原来要求 12 个月，修改后 monthly_income 只有有数据的月份，需适配。
+
+**修复**：`web/services/validators/rules_common.py`，不足 12 个月标为 `warn`（需关注），满 12 个月标为 `pass`。
+
+```python
+if len(rows) < 12:
+    return CheckItem(..., status='warn',
+                     excel_value=f'{len(rows)}/12 个月',
+                     note='月度收入数据不足 12 个月，请确认是否补充')
+```
+
+---
+
+## 3. 数据对比月度明细展开按钮 bug
+
+**问题**：点击"月度月票收入明细"的展开按钮，实际展开的是"月度临停收入明细"的表格。两个明细区看起来显示相同内容。
+
+**原因**：`web/static/app.js` 的 `renderMonthlyDetail()` 函数中，onclick 使用 `this.parentElement.querySelector('.detail-body')` 来查找要展开的元素。当页面有多个 `.detail-body` 时，`querySelector` 永远返回第一个匹配元素。所以无论点哪个按钮，展开的都是临停那张表。
+
+**修复**：将 onclick 改为 `this.nextElementSibling.classList.toggle('collapsed')`，让每个按钮只控制紧邻自己的 `.detail-body` 元素。
+
+修改前：
+```javascript
+onclick="this.parentElement.querySelector('.detail-body').classList.toggle('collapsed')"
+```
+
+修改后：
+```javascript
+onclick="this.nextElementSibling.classList.toggle('collapsed')"
+```
+
+**验证**：启动服务器实际运行审核流程，确认后端数据正确（临停：312/608/94，月票：13800/4680/2398），前端展开按钮分别控制各自的详情区域。
+
+---
+
+## 修改文件清单
+
+| 文件 | 改动 |
+|------|------|
+| `web/services/excel_parser.py` | 月度收入过滤空数据月份 |
+| `web/services/validators/rules_common.py` | 月度收入完整性检查适配 |
+| `web/static/app.js` | 月度明细展开按钮修复 |

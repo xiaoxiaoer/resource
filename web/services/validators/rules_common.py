@@ -114,7 +114,7 @@ def check_property_type(ctx) -> CheckItem:
     if _is_generic_property_type(val):
         return CheckItem(code='', label='合作客户主体', status='risk',
                          excel_value=val,
-                         note='填写不规范：应为具体公司名称，而非"承包方"/"产权方"等通用词')
+                         note='填写不规范：应为具体公司名称，而非"承包方"/"产权方"等通用词，否则无法进行企查查核实')
     return CheckItem(code='', label='合作客户主体', status='pass', excel_value=val)
 
 
@@ -175,6 +175,8 @@ def check_has_own_channel(ctx) -> CheckItem:
 
 
 def check_parking_spaces(ctx) -> CheckItem:
+    if ctx['business_type'] == 'spot_exchange':
+        return None
     val = ctx['pi'].get('parking_spaces')
     if val is None:
         return CheckItem(code='', label='停车场车位数量', status='risk',
@@ -191,10 +193,10 @@ def check_parking_spaces(ctx) -> CheckItem:
 def check_monthly_income_completeness(ctx) -> CheckItem:
     rows = ctx['pi'].get('monthly_income') or []
     if len(rows) < 12:
-        return CheckItem(code='', label='月度收入（12 个月）', status='risk',
+        return CheckItem(code='', label='月度收入', status='warn',
                          excel_value=f'{len(rows)}/12 个月',
-                         note='月度收入数据不足 12 个月')
-    return CheckItem(code='', label='月度收入（12 个月）', status='pass',
+                         note='月度收入数据不足 12 个月，请确认是否补充')
+    return CheckItem(code='', label='月度收入', status='pass',
                      excel_value=f'{len(rows)} 个月')
 
 

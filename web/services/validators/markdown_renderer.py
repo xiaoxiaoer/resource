@@ -77,16 +77,34 @@ def _render_checks(result: ValidationResult) -> str:
     return '\n'.join(out).rstrip()
 
 
+def _fmt_eval_value(label: str, v) -> str:
+    if v is None or v == '':
+        return '-'
+    if label == '月均消耗比例':
+        try:
+            return f'{float(v):.2f}%'
+        except (ValueError, TypeError):
+            return str(v)
+    if label == '实际采买折扣':
+        try:
+            return f'{float(v):.3f}'
+        except (ValueError, TypeError):
+            return str(v)
+    return _fmt_value(v)
+
+
 def _render_evaluation(result: ValidationResult) -> str:
     if not result.evaluation:
-        return '## 项目评估\n\n（无评估区数据）'
-    lines = ['## 项目评估']
-    for k, v in result.evaluation.items():
+        return '## 项目评估（原样输出）\n\n（无评估区数据）'
+    lines = ['## 项目评估（原样输出）', '']
+    lines.append('| 序号 | 评估项 | 数据值 |')
+    lines.append('|------|--------|-------|')
+    for i, (k, v) in enumerate(result.evaluation.items(), 1):
         if v is None:
             continue
-        lines.append(f'- {k}：{_fmt_value(v)}')
-    if len(lines) == 1:
-        lines.append('（无评估区数据）')
+        lines.append(f'| E{i} | {_escape_pipe(k)} | {_fmt_eval_value(k, v)} |')
+    if len(lines) == 3:
+        lines.append('| - | （无评估区数据） | - |')
     return '\n'.join(lines)
 
 

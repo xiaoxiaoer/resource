@@ -251,6 +251,7 @@ def _build_comparison(parsed_data: dict, tool_results: list[dict]) -> dict:
         'summary': [],
         'monthly_detail': {'temp_parking': [], 'monthly_ticket': []},
         'ticket_types': [],
+        'ticket_configs': [],
         'company_info': None,
     }
 
@@ -418,6 +419,31 @@ def _build_comparison(parsed_data: dict, tool_results: list[dict]) -> dict:
                 'active_count': tt.get('active_count'),
                 'category': tt.get('category', ''),
             })
+
+        # 月票配置
+        for tc in bem.get('ticket_configs', []):
+            comparison['ticket_configs'].append({
+                'ticketName': tc.get('ticketName', ''),
+                'price': tc.get('price'),
+                'maxSellNum': tc.get('maxSellNum'),
+                'sellNum': tc.get('sellNum'),
+            })
+
+        # 对外办理月卡费用 vs 月票配置价格（仅当月票配置只有一条时对比）
+        ticket_configs = bem.get('ticket_configs', [])
+        if len(ticket_configs) == 1:
+            sec = parsed_data.get('spot_exchange_calc', {})
+            monthly_card_fee = sec.get('monthly_card_fee')
+            config_price = float(ticket_configs[0].get('price', 0) or 0)
+            if monthly_card_fee is not None:
+                comparison['summary'].append({
+                    'label': '对外办理月卡费用（vs 月票配置）',
+                    'excel_value': monthly_card_fee,
+                    'bem_value': config_price,
+                    'unit': '元/月',
+                    'diff_percent': _diff_percent(monthly_card_fee, config_price),
+                    'status': _diff_status(monthly_card_fee, config_price),
+                })
 
     # --- 企业信息 ---
     if company_data:

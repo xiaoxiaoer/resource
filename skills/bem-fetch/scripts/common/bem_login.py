@@ -421,6 +421,17 @@ async def fetch_monthly_ticket_report(
     return await pomp_api_get(page, '/mgr/monthTicketBillPaymentReport/list', params)
 
 
+async def fetch_month_ticket_config(page: Page, park_id: str) -> dict:
+    """获取月票配置列表（启用的月票套餐）。"""
+    params = {
+        'page': '1',
+        'rp': '100',
+        'query_parkId': park_id,
+        'query_ticketStatus': '1',
+    }
+    return await pomp_api_get(page, '/mgr/monthTicketConfig/list.do', params)
+
+
 async def cleanup(page: Page) -> None:
     """清理资源"""
     browser = getattr(page, '_bem_browser', None)

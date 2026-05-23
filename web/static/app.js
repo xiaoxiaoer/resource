@@ -129,7 +129,7 @@
                 ['车位占用率', pi.occupancy_rate || '-'],
                 ['结算模式', pi.settlement_mode || '-'],
                 ['设备、服务置换金额（元）', sec.equipment_amount ? '¥' + sec.equipment_amount.toLocaleString() : '-'],
-                ['对外办理月卡费用（元/月）', sec.monthly_card_fee ? '¥' + sec.monthly_card_fee.toLocaleString() + '/月' : '-'],
+                ['对外办理月卡费用（详情请看底部月票配置）', sec.monthly_card_fee ? '¥' + sec.monthly_card_fee.toLocaleString() + '/月' : '-'],
                 ['置换车位数', sec.replacement_spaces || '-'],
                 ['回本后甲方分润比例', sec.profit_share_ratio !== null ? sec.profit_share_ratio : '-'],
                 ['合同有效年限（月）', sec.contract_months ? sec.contract_months + '个月' : '-'],
@@ -491,6 +491,26 @@
             html += '</tbody></table>';
         }
 
+        // 月票配置
+        const ticketConfigs = data.ticket_configs || [];
+        if (ticketConfigs.length > 0) {
+            html += '<h3 class="comparison-subtitle">月票配置</h3>';
+            html += '<table class="comparison-table"><thead><tr>';
+            html += '<th>月票名称</th><th>价格</th><th>总张数</th><th>已售张数</th>';
+            html += '</tr></thead><tbody>';
+
+            ticketConfigs.forEach(tc => {
+                html += `<tr>`;
+                html += `<td>${tc.ticketName}</td>`;
+                html += `<td>${tc.price != null ? '¥' + Number(tc.price).toLocaleString() : '-'}</td>`;
+                html += `<td>${tc.maxSellNum != null ? tc.maxSellNum : '-'}</td>`;
+                html += `<td>${tc.sellNum != null ? tc.sellNum : '-'}</td>`;
+                html += '</tr>';
+            });
+
+            html += '</tbody></table>';
+        }
+
         // 企业信息
         const company = data.company_info;
         if (company) {
@@ -516,7 +536,7 @@
     }
 
     function renderMonthlyDetail(title, rows, unit) {
-        let html = `<h3 class="comparison-subtitle collapsible" onclick="this.parentElement.querySelector('.detail-body').classList.toggle('collapsed')">${title} <span class="collapse-hint">点击展开/收起</span></h3>`;
+        let html = `<h3 class="comparison-subtitle collapsible" onclick="this.nextElementSibling.classList.toggle('collapsed')">${title} <span class="collapse-hint">点击展开/收起</span></h3>`;
         html += '<div class="detail-body collapsed">';
         html += '<table class="comparison-table monthly-detail-table"><thead><tr>';
         html += '<th>月份</th><th>上传数据</th><th>BEM 数据</th><th>状态</th>';

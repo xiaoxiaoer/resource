@@ -20,7 +20,7 @@ from dateutil.relativedelta import relativedelta
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'common'))
 from bem_login import (
     login_bem, simulate_login_pomp, cleanup,
-    fetch_temp_charge_report, fetch_monthly_ticket_report, pomp_api_get,
+    fetch_temp_charge_report, fetch_monthly_ticket_report, fetch_month_ticket_config, pomp_api_get,
 )
 
 from dotenv import load_dotenv
@@ -187,12 +187,35 @@ def _parse_ticket_types(raw_types: list[dict]) -> list[dict]:
     return parsed
 
 
+def _parse_ticket_configs(raw_data: dict) -> list[dict]:
+    """解析月票配置列表"""
+    if isinstance(raw_data, dict) and 'data' in raw_data:
+        inner = raw_data['data']
+        rows = inner.get('rows', []) if isinstance(inner, dict) else []
+    elif isinstance(raw_data, dict):
+        rows = raw_data.get('rows', [])
+    elif isinstance(raw_data, list):
+        return raw_data
+    else:
+        return []
+
+    configs = []
+    for row in rows:
+        configs.append({
+            'ticketName': row.get('ticketName', ''),
+            'price': row.get('price'),
+            'maxSellNum': row.get('maxSellNum'),
+            'sellNum': row.get('sellNum'),
+        })
+    return configs
+
+
 async def fetch_all_reports_async(
     car_park: str,
     car_park_id: str | None = None,
     date_range: str | None = None,
     park_id: str | None = None,
-    reports: str = 'temp,ticket,types',
+    reports: str = 'temp,ticket,types,config',
 ) -> dict:
     """一次登录获取全部报表数据"""
     page = None
@@ -250,6 +273,14 @@ async def fetch_all_reports_async(
             raw_types = await _fetch_ticket_types_from_page(pomp_page, actual_park_id)
             result['ticket_types'] = _parse_ticket_types(raw_types)
 
+        # 月票配置
+        if 'config' in report_set:
+            raw = await fetch_month_ticket_config(pomp_page, actual_park_id)
+            if raw.get('status') == 200:
+                result['ticket_configs'] = _parse_ticket_configs(raw.get('data', {}))
+            else:
+                result['ticket_configs'] = []
+
         return {'status': 'success', 'data': result}
 
     except Exception as e:
@@ -265,7 +296,7 @@ def main():
     parser.add_argument('--car-park-id', default=None, help='车场编码（如 2KR98AUK）')
     parser.add_argument('--park-id', default=None, help='POMP 内部 parkId（如 5516）')
     parser.add_argument('--date-range', default=None, help='查询时间范围，格式: YYYY-MM~YYYY-MM')
-    parser.add_argument('--reports', default='temp,ticket,types', help='要获取的报表，逗号分隔: temp,ticket,types')
+    parser.add_argument('--reports', default='temp,ticket,types,config', help='要获取的报表，逗号分隔: temp,ticket,types,config')
     args = parser.parse_args()
 
     result = asyncio.run(fetch_all_reports_async(

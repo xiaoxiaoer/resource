@@ -103,7 +103,7 @@ def parse_project_info(ws) -> dict:
         if val and not any(c.isdigit() for c in str(val)):
             result[key] = None
 
-    # 月度收入 — 查找「月份」表头行，后续 12 行为数据
+    # 月度收入 — 查找「月份」表头行，只保留有实际数据的月份
     header_row = _find_label_row(ws, 1, '月份', 10, 20)
     if header_row:
         monthly_income = []
@@ -111,10 +111,14 @@ def parse_project_info(ws) -> dict:
             month = _safe_int(_cell_num(ws, row, 1))
             if month is None:
                 continue
+            temp = _cell_num(ws, row, 2)
+            ticket = _cell_num(ws, row, 3)
+            if temp is None and ticket is None:
+                continue
             monthly_income.append({
                 'month': month,
-                'temp_income': _cell_num(ws, row, 2),
-                'ticket_income': _cell_num(ws, row, 3),
+                'temp_income': temp,
+                'ticket_income': ticket,
             })
         result['monthly_income'] = monthly_income
 
@@ -127,18 +131,34 @@ def parse_project_info(ws) -> dict:
 
 
 def parse_project_info_collection(ws) -> dict:
-    """解析「项目信息收集表」sheet（车位置换业务的项目信息）"""
-    result = {
-        'car_park_name': _cell_str(ws, 2, 2),
-        'car_park_address': _cell_str(ws, 3, 2),
-        'business_nature': _cell_str(ws, 6, 3),   # 车场业态
-        'property_type': _cell_str(ws, 7, 3),     # 合作客户主体
-        'contract_expire_date': _serial_to_date(_cell_num(ws, 8, 3)) or _cell_str(ws, 8, 3),
-        'parking_fee_rule': _cell_str(ws, 9, 3),
-        'occupancy_rate': _cell_str(ws, 10, 3),   # 车位占用率
-        'allow_posting': _cell_str(ws, 11, 3),
-        'settlement_mode': _cell_str(ws, 12, 3),
-    }
+    """解析「项目信息收集表」sheet（车位置换业务的项目信息）— 通过标签关键词查找，兼容行偏移"""
+    result = {}
+
+    # 车场名称、车场地址：标签在 col 1，值在 col 2
+    name_row = _find_label_row(ws, 1, '车场名称', 1, 5)
+    result['car_park_name'] = _cell_str(ws, name_row, 2) if name_row else _cell_str(ws, 2, 2)
+    addr_row = _find_label_row(ws, 1, '车场地址', 1, 5)
+    result['car_park_address'] = _cell_str(ws, addr_row, 2) if addr_row else _cell_str(ws, 3, 2)
+
+    # 其余字段：标签在 col 2，值在 col 3，通过关键词查找
+    field_defs = [
+        ('business_nature',      ['车场业态', '业态']),
+        ('property_type',        ['合作客户', '产权方']),
+        ('contract_expire_date', ['承包到期']),
+        ('parking_fee_rule',     ['收费规则']),
+        ('occupancy_rate',       ['车位占用率', '占用率']),
+        ('allow_posting',        ['张贴物料', '允许张贴']),
+        ('settlement_mode',      ['结算模式', '结算']),
+    ]
+    for key, keywords in field_defs:
+        for kw in keywords:
+            row = _find_label_row(ws, 2, kw, 4, 25)
+            if row:
+                if key == 'contract_expire_date':
+                    result[key] = _serial_to_date(_cell_num(ws, row, 3)) or _cell_str(ws, row, 3)
+                else:
+                    result[key] = _cell_str(ws, row, 3)
+                break
 
     # 模板占位符清理
     for key in ('contract_expire_date',):
@@ -146,16 +166,23 @@ def parse_project_info_collection(ws) -> dict:
         if val and not any(c.isdigit() for c in str(val)):
             result[key] = None
 
-    # 月度收入（rows 15-26，月份 1-12）
+    # 月度收入 — 查找「月份」表头行，只保留有实际数据的月份
+    header_row = _find_label_row(ws, 1, '月份', 10, 25)
+    if not header_row:
+        header_row = 14
     monthly_income = []
-    for row in range(15, 27):
+    for row in range(header_row + 1, header_row + 13):
         month = _safe_int(_cell_num(ws, row, 1))
         if month is None:
             continue
+        temp = _cell_num(ws, row, 2)
+        ticket = _cell_num(ws, row, 3)
+        if temp is None and ticket is None:
+            continue
         monthly_income.append({
             'month': month,
-            'temp_income': _cell_num(ws, row, 2),
-            'ticket_income': _cell_num(ws, row, 3),
+            'temp_income': temp,
+            'ticket_income': ticket,
         })
     result['monthly_income'] = monthly_income
 
@@ -375,18 +402,7 @@ def parse_audit_excel(file_path: str | Path) -> dict:
     if spot_calc_sheet:
         result['spot_exchange_calc'] = parse_spot_exchange_calc(wb[spot_calc_sheet])
 
-    # 从「车位置换运营 测算表」补充数据（总车位数等）
-    for name in wb.sheetnames:
-        if '车位置换运营' in name and '测算' in name:
-            ws_supp = wb[name]
-            spaces = _safe_int(_cell_num(ws_supp, 20, 4))
-            if spaces:
-                if 'project_info' not in result:
-                    result['project_info'] = {}
-                result['project_info']['parking_spaces'] = spaces
-            break
-
-    # 自动判断业务类型
+    # 车位置换业务: 车位置换测算表（非「运营」版本）
     has_voucher = 'calculation_tool' in result
     has_spot = 'discount_purchase' in result or 'spot_exchange_calc' in result
     if has_voucher and has_spot:

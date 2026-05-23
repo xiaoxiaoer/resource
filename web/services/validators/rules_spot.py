@@ -42,17 +42,36 @@ def check_vat_rate(ctx) -> CheckItem:
 
 
 def check_monthly_card_fee(ctx) -> CheckItem:
-    """对外办理月卡费用 — 完整性 + 与 BEM 非内部月票价对比。"""
+    """对外办理月卡费用 — 完整性 + 与月票配置价格对比。
+
+    优先使用 ticket_configs 接口数据：当月票配置只有 1 条时，直接用其价格对比。
+    否则回退到 ticket_types 的对外月票价。
+    """
     val = ctx['sec'].get('monthly_card_fee')
     if val is None:
         return CheckItem(code='', label='对外办理月卡费用',
-                         status='risk', excel_value=val, note='缺失')
+                         status='risk', excel_value=val,
+                         note='缺失（详情请看底部月票配置）')
     bem = ctx['bem']
+
+    # 优先：月票配置只有 1 条时，直接用其价格对比
+    ticket_configs = bem.get('ticket_configs', []) if bem else []
+    if len(ticket_configs) == 1:
+        config_price = float(ticket_configs[0].get('price', 0) or 0)
+        status = _diff_status(val, config_price)
+        pct = _diff_percent(val, config_price)
+        note = f'月票配置价格：¥{config_price}（详情请看底部月票配置）'
+        if status == 'warn':
+            note = f'与月票配置价格差异 {pct}%（容差 {TOLERANCE_PERCENT}%）；详情请看底部月票配置'
+        return CheckItem(code='', label='对外办理月卡费用',
+                         status=status, excel_value=val,
+                         ref_value=config_price, ref_source='BEM月票配置', note=note)
+
+    # 回退：使用 ticket_types 的对外月票价
     if not bem:
         return CheckItem(code='', label='对外办理月卡费用',
                          status='manual', excel_value=val, ref_source='BEM',
-                         note='BEM 数据未获取，待人工核实对外月票价')
-    # 取所有非内部的月票套餐价
+                         note='BEM 数据未获取，待人工核实（详情请看底部月票配置）')
     external_prices = [
         tt.get('price') for tt in bem.get('ticket_types', [])
         if not tt.get('is_internal') and tt.get('price') is not None
@@ -60,14 +79,13 @@ def check_monthly_card_fee(ctx) -> CheckItem:
     if not external_prices:
         return CheckItem(code='', label='对外办理月卡费用',
                          status='manual', excel_value=val, ref_source='BEM',
-                         note='BEM 未查到对外月票套餐，待人工核实')
-    # 与最接近 val 的对外月票价对比
+                         note='BEM 未查到对外月票套餐（详情请看底部月票配置）')
     nearest = min(external_prices, key=lambda p: abs(p - val))
     status = _diff_status(val, nearest)
     pct = _diff_percent(val, nearest)
-    note = f'BEM 对外月票价：{external_prices}'
+    note = f'BEM 对外月票价：{external_prices}（详情请看底部月票配置）'
     if status == 'warn':
-        note = f'与 BEM 对外月票价差异 {pct}%（容差 {TOLERANCE_PERCENT}%）；BEM 价格：{external_prices}'
+        note = f'与 BEM 对外月票价差异 {pct}%（容差 {TOLERANCE_PERCENT}%）；BEM 价格：{external_prices}；详情请看底部月票配置'
     return CheckItem(code='', label='对外办理月卡费用',
                      status=status, excel_value=val,
                      ref_value=nearest, ref_source='BEM', note=note)
