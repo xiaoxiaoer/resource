@@ -7,6 +7,8 @@
 import asyncio
 import json
 import logging
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -17,6 +19,38 @@ logger = logging.getLogger(__name__)
 BEM_SCRIPT = SKILLS_DIR / 'bem-fetch' / 'scripts' / 'fetch_all_reports.py'
 COMPANY_SCRIPT = SKILLS_DIR / 'company-lookup' / 'scripts' / 'query_company_baidu.py'
 
+# 子进程环境：强制 UTF-8，避免 Windows 默认 GBK 导致中文乱码
+_SUBPROCESS_ENV = {**os.environ, 'PYTHONUTF8': '1'}
+
+
+def _subprocess_run_sync(args: list[str], timeout: int) -> tuple[int, str, str]:
+    """同步版子进程调用，供 asyncio.to_thread 使用。"""
+    try:
+        proc = subprocess.run(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=_SUBPROCESS_ENV,
+            timeout=timeout,
+        )
+        return (
+            proc.returncode,
+            proc.stdout.decode('utf-8', errors='replace'),
+            proc.stderr.decode('utf-8', errors='replace'),
+        )
+    except subprocess.TimeoutExpired:
+        logger.error("子进程超时 (%ds): %s", timeout, ' '.join(args))
+        return (-1, '', f'子进程超时 ({timeout}s)')
+
+
+async def _run_subprocess(args: list[str], timeout: int = 180) -> tuple[int, str, str]:
+    """启动子进程并返回 (returncode, stdout_str, stderr_str)，统一 UTF-8 解码。
+
+    使用 subprocess.run + asyncio.to_thread 代替 asyncio.create_subprocess_exec，
+    避免 Windows 上 uvicorn 的事件循环不支持子进程 (NotImplementedError)。
+    """
+    return await asyncio.to_thread(_subprocess_run_sync, args, timeout)
+
 
 async def run_bem_fetch(car_park_name: str, date_range: str | None = None) -> dict:
     """调用 BEM 统一数据获取脚本"""
@@ -26,20 +60,12 @@ async def run_bem_fetch(car_park_name: str, date_range: str | None = None) -> di
 
     logger.info("BEM fetch: %s", ' '.join(args))
 
-    proc = await asyncio.create_subprocess_exec(
-        *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate()
-
-    stdout_str = stdout.decode('utf-8', errors='replace')
-    stderr_str = stderr.decode('utf-8', errors='replace')
+    returncode, stdout_str, stderr_str = await _run_subprocess(args)
 
     logger.info("BEM fetch done: returncode=%d, stdout=%d bytes, stderr=%d bytes",
-                proc.returncode, len(stdout_str), len(stderr_str))
+                returncode, len(stdout_str), len(stderr_str))
 
-    if proc.returncode != 0:
+    if returncode != 0:
         # BEM 脚本出错时错误信息在 stdout（JSON），stderr 可能有 Playwright 日志
         try:
             result = json.loads(stdout_str)
@@ -49,11 +75,11 @@ async def run_bem_fetch(car_park_name: str, date_range: str | None = None) -> di
                 return result
         except json.JSONDecodeError:
             pass
-        logger.warning("BEM fetch error: rc=%d, stderr=%s", proc.returncode, stderr_str[:200])
+        logger.warning("BEM fetch error: rc=%d, stderr=%s", returncode, stderr_str[:200])
         return {
             'status': 'error',
             'error': stderr_str[:500] or stdout_str[:500],
-            'returncode': proc.returncode,
+            'returncode': returncode,
         }
 
     try:
@@ -72,17 +98,9 @@ async def run_company_lookup(company_name: str) -> dict:
     """调用企查查/启信宝查询脚本"""
     args = [sys.executable, str(COMPANY_SCRIPT), '--company', company_name]
 
-    proc = await asyncio.create_subprocess_exec(
-        *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate()
+    returncode, stdout_str, stderr_str = await _run_subprocess(args)
 
-    stdout_str = stdout.decode('utf-8', errors='replace')
-    stderr_str = stderr.decode('utf-8', errors='replace')
-
-    if proc.returncode != 0:
+    if returncode != 0:
         try:
             result = json.loads(stdout_str)
             if isinstance(result, dict):

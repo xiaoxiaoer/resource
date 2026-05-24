@@ -459,7 +459,7 @@ def _build_comparison(parsed_data: dict, tool_results: list[dict]) -> dict:
 
 
 def _sse(event: str, data: dict) -> str:
-    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=True)}\n\n"
 
 
 async def _run_audit_fixed(
@@ -471,6 +471,8 @@ async def _run_audit_fixed(
     car_park_name = pi.get('car_park_name', '')
     property_type = pi.get('property_type', '')
 
+    print(f'[DEBUG] _run_audit_fixed: car_park_name={car_park_name!r}, property_type={property_type!r}')
+
     yield _sse("status", {"phase": "fetching_bem"})
 
     bem_result: dict | None = None
@@ -479,6 +481,7 @@ async def _run_audit_fixed(
 
     # 1. BEM 数据
     if car_park_name:
+        print(f'[DEBUG] 即将调用 run_bem_fetch({car_park_name!r})')
         yield _sse("tool_call", {
             "tool": "fetch_bem_data",
             "args": {"car_park_name": car_park_name},
@@ -487,7 +490,11 @@ async def _run_audit_fixed(
         try:
             bem_result = await run_bem_fetch(car_park_name=car_park_name)
         except Exception as e:
+            import traceback
+            print(f'[DEBUG] run_bem_fetch 异常: {type(e).__name__}: {e}')
+            traceback.print_exc()
             bem_result = {'status': 'error', 'error': str(e)}
+        print(f'[DEBUG] run_bem_fetch 返回: status={bem_result.get("status")}, error={bem_result.get("error", "")[:300]}')
         yield _sse("tool_call", {
             "tool": "fetch_bem_data",
             "args": {"car_park_name": car_park_name},
@@ -574,7 +581,7 @@ async def run_audit(
     messages = [{"role": "user", "content": user_content}]
 
     def sse(event: str, data: dict) -> str:
-        return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+        return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=True)}\n\n"
 
     if not LLM_API_KEY or LLM_API_KEY == 'your_api_key':
         yield sse("error", {"message": "LLM API Key 未配置，请在 .env 中设置 LLM_API_KEY"})

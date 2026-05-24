@@ -1,8 +1,10 @@
-./*.docx
-./*.doc
+*.md
+*.docx
+*.doc
 *.pyc
 *.yaml
 *.env
 .claude
 .idea
 .pytest_cache
+.venv
