@@ -57,6 +57,7 @@ h1 { font-size: 24px; margin-bottom: 4px; }
 
 .form-row {
     display: flex; align-items: center; gap: 12px;
+    flex-wrap: wrap;
 }
 .form-row label { font-weight: 500; }
 .form-row select {
@@ -181,4 +182,24 @@ h1 { font-size: 24px; margin-bottom: 4px; }
 }
 #debug-btn {
     margin-right: 8px;
+}
+
+/* LLM 上下文约束预览 */
+.llm-context-preview {
+    max-height: 300px;
+    overflow-y: auto;
+    margin-top: 8px;
+    padding: 12px;
+    background: #fafafa;
+    border: 1px solid #eee;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    line-height: 1.5;
+    color: #555;
+}
+
+#llm-context-details summary {
+    margin-bottom: 4px;
 }

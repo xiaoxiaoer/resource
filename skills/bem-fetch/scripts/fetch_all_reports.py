@@ -210,12 +210,76 @@ def _parse_ticket_configs(raw_data: dict) -> list[dict]:
     return configs
 
 
+def _extract_bill_total_real_value(data: dict) -> float:
+    """从 parkingBillDetail 响应中提取合计行（id 为 null）的 realValue"""
+    if not data or data.get('status') != 200:
+        return 0
+    inner = data.get('data', {})
+    if isinstance(inner, dict):
+        rows = inner.get('rows', [])
+    elif isinstance(inner, list):
+        rows = inner
+    else:
+        return 0
+    for row in rows:
+        if row.get('id') is None:
+            return float(row.get('realValue', 0) or 0)
+    return 0
+
+
+async def _fetch_channel_income_ratio(pomp_page, actual_park_id: str) -> dict:
+    """获取自有小程序/ETC支付渠道的可消耗收入占比。
+
+    两次调用 parkingBillDetail/list.do：
+    - Query A：带 payOrigin=14 过滤（开放平台收入）
+    - Query B：无 payOrigin 过滤（总收入）
+    返回 { value_a, value_b, ratio, formula, date_range }
+    """
+    now = datetime.now()
+    end_time = now.strftime('%Y-%m-%d %H:%M:%S')
+    start_time = (now - relativedelta(months=3)).strftime('%Y-%m-%d %H:%M:%S')
+
+    base_params = {
+        'page': '1',
+        'rp': '500',
+        'parkIds': str(actual_park_id),
+        'query_payTimeFrom': start_time,
+        'query_payTimeTo': end_time,
+        'query_billType': '0',
+    }
+
+    # Query B：总收入（不带 payOrigin 过滤）
+    result_b = await pomp_api_get(pomp_page, '/mgr/park/parkingBillDetail/list.do', base_params)
+
+    # Query A：开放平台收入（带 payOrigin=14 过滤）
+    params_a = {
+        **base_params,
+        'query_payOrigin': '14',
+        'query_payOriginRemark': '开放平台',
+    }
+    result_a = await pomp_api_get(pomp_page, '/mgr/park/parkingBillDetail/list.do', params_a)
+
+    value_b = _extract_bill_total_real_value(result_b)
+    value_a = _extract_bill_total_real_value(result_a)
+
+    ratio = round(value_a / value_b, 4) if value_b > 0 else 0
+
+    return {
+        'value_a': value_a,
+        'value_b': value_b,
+        'ratio': ratio,
+        'formula': f'¥{value_a:,.2f} / ¥{value_b:,.2f} = {ratio:.2%}',
+        'date_range': f'{start_time[:10]} ~ {end_time[:10]}',
+    }
+
+
 async def fetch_all_reports_async(
     car_park: str,
     car_park_id: str | None = None,
     date_range: str | None = None,
     park_id: str | None = None,
     reports: str = 'temp,ticket,types,config',
+    fetch_channel_income: bool = False,
 ) -> dict:
     """一次登录获取全部报表数据"""
     page = None
@@ -281,6 +345,13 @@ async def fetch_all_reports_async(
             else:
                 result['ticket_configs'] = []
 
+        # 可消耗收入占比（自有小程序/ETC支付渠道）
+        if fetch_channel_income:
+            try:
+                result['channel_income'] = await _fetch_channel_income_ratio(pomp_page, actual_park_id)
+            except Exception as e:
+                result['channel_income'] = {'error': str(e)}
+
         return {'status': 'success', 'data': result}
 
     except Exception as e:
@@ -297,10 +368,12 @@ def main():
     parser.add_argument('--park-id', default=None, help='POMP 内部 parkId（如 5516）')
     parser.add_argument('--date-range', default=None, help='查询时间范围，格式: YYYY-MM~YYYY-MM')
     parser.add_argument('--reports', default='temp,ticket,types,config', help='要获取的报表，逗号分隔: temp,ticket,types,config')
+    parser.add_argument('--fetch-channel-income', action='store_true', default=False, help='获取自有小程序/ETC渠道可消耗收入占比')
     args = parser.parse_args()
 
     result = asyncio.run(fetch_all_reports_async(
         args.car_park, args.car_park_id, args.date_range, args.park_id, args.reports,
+        fetch_channel_income=args.fetch_channel_income,
     ))
     print(json.dumps(result, ensure_ascii=False, indent=2))
     if result.get('status') == 'error':

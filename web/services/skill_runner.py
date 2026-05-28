@@ -52,11 +52,17 @@ async def _run_subprocess(args: list[str], timeout: int = 180) -> tuple[int, str
     return await asyncio.to_thread(_subprocess_run_sync, args, timeout)
 
 
-async def run_bem_fetch(car_park_name: str, date_range: str | None = None) -> dict:
+async def run_bem_fetch(
+    car_park_name: str,
+    date_range: str | None = None,
+    has_own_channel: str | None = None,
+) -> dict:
     """调用 BEM 统一数据获取脚本"""
     args = [sys.executable, str(BEM_SCRIPT), '--car-park', car_park_name]
     if date_range:
         args.extend(['--date-range', date_range])
+    if has_own_channel == '是':
+        args.append('--fetch-channel-income')
 
     logger.info("BEM fetch: %s", ' '.join(args))
 

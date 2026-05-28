@@ -33,6 +33,8 @@ def _parse_date(value):
             return datetime.strptime(normalized, '%Y-%m-%d')
         except ValueError:
             return None
+    # 截取日期部分，兼容 openpyxl datetime 字符串化后带 " 00:00:00" 的情况
+    s = s.split(' ')[0]
     for fmt in ('%Y-%m-%d', '%Y/%m/%d', '%Y.%m.%d'):
         try:
             return datetime.strptime(s, fmt)
@@ -166,11 +168,26 @@ def check_allow_posting(ctx) -> CheckItem:
 
 def check_has_own_channel(ctx) -> CheckItem:
     val = ctx['pi'].get('has_own_channel')
+    if _missing(val):
+        return CheckItem(
+            code='', label='是否存在自有小程序/ETC支付渠道',
+            status='risk', excel_value=val, note='缺失',
+        )
+    if val == '是':
+        bem = ctx.get('bem') or {}
+        channel = bem.get('channel_income') if isinstance(bem, dict) else None
+        if channel and not channel.get('error'):
+            ratio_str = f"{channel.get('ratio', 0):.2%}"
+            return CheckItem(
+                code='', label='是否存在自有小程序/ETC支付渠道',
+                status='pass', excel_value=val,
+                note=f'可消耗收入占比：{ratio_str}',
+                ref_value=channel.get('ratio'),
+                ref_source='BEM渠道收入',
+            )
     return CheckItem(
         code='', label='是否存在自有小程序/ETC支付渠道',
-        status='risk' if _missing(val) else 'pass',
-        excel_value=val,
-        note='缺失' if _missing(val) else '',
+        status='pass', excel_value=val, note='',
     )
 
 

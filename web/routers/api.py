@@ -6,6 +6,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 
 from web.services.excel_parser import parse_audit_excel
 from web.services.audit_session import create_session, get_session
+from web.services.ai_orchestrator import build_prompt_context
 from web.config import UPLOAD_DIR, ENABLE_LLM_AUDIT
 
 router = APIRouter(prefix="/api")
@@ -83,6 +84,16 @@ async def start_audit(body: dict):
         "stream_url": f"/api/audit/{session.session_id}/stream",
         "enable_llm": session.enable_llm,
     }
+
+
+@router.get("/prompts/{business_type}")
+async def get_prompt_context(business_type: str):
+    """获取指定业务类型的 prompts 上下文约束"""
+    if business_type not in ("parking_voucher", "spot_exchange"):
+        raise HTTPException(400, f"Unsupported business_type: {business_type}")
+
+    context = build_prompt_context(business_type)
+    return {"business_type": business_type, "context": context}
 
 
 @router.get("/audit/{session_id}")

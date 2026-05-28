@@ -49,6 +49,14 @@ def _safe_int(val) -> int | None:
     return int(f) if f is not None else None
 
 
+def _normalize_vat(val) -> float | None:
+    """标准化增值税率为小数（如 0.09）。输入可能是整数 9 或小数 0.09。"""
+    val = _safe_float(val)
+    if val is None:
+        return None
+    return val / 100.0 if val > 1 else val
+
+
 def _cell_str(ws, row: int, col: int) -> str | None:
     val = ws.cell(row=row, column=col).value
     if val is None:
@@ -58,6 +66,239 @@ def _cell_str(ws, row: int, col: int) -> str | None:
 
 def _cell_num(ws, row: int, col: int) -> float | None:
     return _safe_float(ws.cell(row=row, column=col).value)
+
+
+def parse_survey_form(ws) -> dict:
+    """解析「新车场调研表」sheet — 横向表头+值布局，提取补充项目信息"""
+    result = {}
+
+    # Row 4 表头 → Row 5 值, Row 6 表头 → Row 7 值
+    for header_row, value_row in [(4, 5), (6, 7)]:
+        header_map = {}
+        for col in range(1, ws.max_column + 1):
+            label = _cell_str(ws, header_row, col)
+            if label:
+                header_map[label] = col
+        for target_key, keywords in [
+            ('city', ['所在城市']),
+            ('district', ['行政区']),
+            ('car_park_name', ['项目名称']),
+            ('business_nature', ['业态']),
+            ('cooperation_model', ['合作模式']),
+            ('parking_spaces', ['总车位数']),
+            ('parking_lot_type', ['车位类型']),
+            ('parking_fee_rule', ['临停收费规则']),
+            ('monthly_card_price', ['线下月卡标准', '月卡标准']),
+            ('main_income_source', ['收入来源']),
+            ('busy_period', ['忙时时段']),
+            ('occupancy_rate', ['占用率']),
+            ('existing_monthly_cards', ['现有月卡数']),
+            ('has_charging_pile', ['充电桩']),
+        ]:
+            if target_key in result:
+                continue
+            for kw in keywords:
+                for label, col in header_map.items():
+                    if kw in label:
+                        val = ws.cell(row=value_row, column=col).value
+                        if target_key == 'parking_spaces':
+                            result[target_key] = _safe_int(_safe_float(val))
+                        elif target_key in ('monthly_card_price', 'occupancy_rate'):
+                            result[target_key] = _safe_float(val)
+                        elif val is not None:
+                            result[target_key] = str(val).strip() or None
+                        break
+                else:
+                    continue
+                break
+
+    # 合作条款区（Row 12 附近）
+    for row in range(12, 15):
+        for col in range(1, 8):
+            label = _cell_str(ws, row, col)
+            if label and '允许粘贴' in label:
+                result['allow_posting'] = _cell_str(ws, row + 1, col)
+                break
+
+    return result
+
+
+def parse_cooperation_info(ws) -> dict:
+    """解析「合作车场信息收集表」sheet — 标签在 col3，值在 col4（与旧格式偏移+1）"""
+    result = {}
+
+    # 车场名称、车场地址：标签在 col 2，值在 col 3
+    name_row = _find_label_row(ws, 2, '车场名称', 1, 5)
+    result['car_park_name'] = _cell_str(ws, name_row, 3) if name_row else None
+    addr_row = _find_label_row(ws, 2, '车场地址', 1, 5)
+    result['car_park_address'] = _cell_str(ws, addr_row, 3) if addr_row else None
+
+    # 其余字段：标签在 col 3，值在 col 4
+    field_defs = [
+        ('property_type',        ['合作客户', '产权方']),
+        ('contract_expire_date', ['承包到期']),
+        ('parking_fee_rule',     ['收费规则']),
+        ('allow_posting',        ['张贴物料', '允许张贴']),
+        ('parking_spaces',       ['车位数量', '车位']),
+    ]
+    for key, keywords in field_defs:
+        for kw in keywords:
+            row = _find_label_row(ws, 3, kw, 4, 25)
+            if row:
+                if key == 'contract_expire_date':
+                    result[key] = _serial_to_date(_cell_num(ws, row, 4)) or _cell_str(ws, row, 4)
+                elif key == 'parking_spaces':
+                    result[key] = _safe_int(_cell_num(ws, row, 4))
+                else:
+                    result[key] = _cell_str(ws, row, 4)
+                break
+
+    # 模板占位符清理
+    for key in ('contract_expire_date',):
+        val = result.get(key)
+        if val and not any(c.isdigit() for c in str(val)):
+            result[key] = None
+
+    # 月度收入：col 2 月份，col 3 临停，col 4 月租
+    header_row = _find_label_row(ws, 2, '月份', 10, 25)
+    if header_row:
+        monthly_income = []
+        for row in range(header_row + 1, header_row + 13):
+            month = _safe_int(_cell_num(ws, row, 2))
+            if month is None:
+                continue
+            temp = _cell_num(ws, row, 3)
+            ticket = _cell_num(ws, row, 4)
+            if temp is None and ticket is None:
+                continue
+            monthly_income.append({
+                'month': month,
+                'temp_income': temp,
+                'ticket_income': ticket,
+            })
+        result['monthly_income'] = monthly_income
+
+        avg_row = _find_label_row(ws, 2, '月均', header_row, header_row + 15)
+        if avg_row:
+            result['monthly_avg_temp'] = _cell_num(ws, avg_row, 3)
+            result['monthly_avg_ticket'] = _cell_num(ws, avg_row, 4)
+
+    return result
+
+
+def parse_evaluation_calc(ws) -> tuple[dict, dict | None]:
+    """解析「项目评估计算」sheet — 左侧停车券(col2-4) + 右侧车位(col6-8) + 风险评估"""
+    # 构建 col 2 标签→行号 映射（左侧停车券区）
+    label_rows_left = {}
+    for row in range(1, min(ws.max_row + 1, 30)):
+        label = _cell_str(ws, row, 2)
+        if label:
+            label_rows_left[label] = row
+
+    def _find_left(keyword):
+        for label, row in label_rows_left.items():
+            if keyword in label:
+                return row
+        return None
+
+    # 左侧停车券 → calculation_tool
+    voucher = {
+        'department': None,
+        'submitter': None,
+        'opportunity_name': None,
+    }
+
+    calc_fields = [
+        ('equipment_service_amount', '设备/置换金额'),
+        ('cash_purchase_amount',     '现金采买'),
+        ('business_fee',             '业务费'),
+        ('vat_rate',                 '增值税'),
+        ('discount_rate',            '签约折扣率'),
+        ('contract_months',          '合同年限', True),
+        ('voucher_consume_months',   '消耗年限', True),
+        ('monthly_temp_income',      '月均临停'),
+        ('monthly_ticket_income',    '月均月租'),
+        ('contract_amount',          '合同金额'),
+        ('voucher_total_value',      '停车券总价值'),
+        ('voucher_monthly_share',    '每月消耗金额'),
+        ('monthly_consume_ratio',    '月均消耗比例'),
+        ('actual_purchase_discount', '实际折扣率'),
+    ]
+    for item in calc_fields:
+        key, kw = item[0], item[1]
+        as_int = item[2] if len(item) > 2 else False
+        row = _find_left(kw)
+        if row is None:
+            voucher[key] = None
+            continue
+        v = _cell_num(ws, row, 3)
+        if as_int:
+            v = _safe_int(v)
+        if key == 'vat_rate':
+            v = _normalize_vat(v)
+        voucher[key] = v
+
+    # 风险评估区（rows 30-34, cols 2-5）
+    evaluation_scores = []
+    for row in range(30, 35):
+        dimension = _cell_str(ws, row, 2)
+        if dimension:
+            evaluation_scores.append({
+                'category': dimension,
+                'value': str(ws.cell(row=row, column=4).value if ws.cell(row=row, column=4).value is not None else ''),
+                'score': str(ws.cell(row=row, column=5).value if ws.cell(row=row, column=5).value is not None else ''),
+            })
+    voucher['evaluation_scores'] = evaluation_scores
+    voucher['risk_rating'] = _cell_str(ws, 35, 5)
+
+    # 综合结果区（col 5, rows 38-44）
+    voucher['overall_assessment'] = _cell_str(ws, 42, 5)
+
+    # 右侧车位 → spot_exchange_calc
+    label_rows_right = {}
+    for row in range(5, min(ws.max_row + 1, 20)):
+        label = _cell_str(ws, row, 6)
+        if label:
+            label_rows_right[label] = row
+
+    def _find_right(keyword):
+        for label, row in label_rows_right.items():
+            if keyword in label:
+                return row
+        return None
+
+    spot_fields = [
+        ('equipment_amount',     ['设备/置换金额']),
+        ('vat_rate',             ['增值税']),
+        ('monthly_card_fee',     ['对外月租价格']),
+        ('replacement_spaces',   ['置换车位数量']),
+        ('profit_share_ratio',   ['回本后甲方分润比例']),
+        ('contract_months',      ['合同年限']),
+    ]
+    spot = {}
+    for key, keywords in spot_fields:
+        row = None
+        for kw in keywords:
+            row = _find_right(kw)
+            if row:
+                break
+        if row is None:
+            spot[key] = None
+            continue
+        v = _cell_num(ws, row, 8)
+        if key == 'vat_rate':
+            v = _normalize_vat(v)
+        elif key == 'replacement_spaces':
+            v = _safe_int(v)
+        elif key == 'contract_months':
+            v = _safe_int(v)
+        spot[key] = v
+
+    # 仅当右侧有实际数据时返回 spot 字典
+    spot_has_data = any(v is not None for k, v in spot.items()
+                        if k in ('equipment_amount', 'replacement_spaces',
+                                 'monthly_card_fee', 'profit_share_ratio'))
+    return voucher, spot if spot_has_data else None
 
 
 def _find_label_row(ws, col: int, keyword: str, start: int = 1, end: int = 30) -> int | None:
@@ -200,7 +441,7 @@ def parse_spot_exchange_calc(ws) -> dict:
         'crm_settlement_total': _cell_num(ws, 6, 3),
         'crm_service_fee': _cell_num(ws, 6, 5),
         'equipment_amount': _cell_num(ws, 9, 4),
-        'vat_rate': _cell_num(ws, 10, 4),
+        'vat_rate': _normalize_vat(_cell_num(ws, 10, 4)),
         'monthly_card_fee': _cell_num(ws, 11, 4),
         'replacement_spaces': _safe_int(_cell_num(ws, 12, 4)),
         'profit_share_ratio': _cell_num(ws, 13, 4),
@@ -271,7 +512,10 @@ def parse_calculation_tool(ws) -> dict:
     for item in calc_fields:
         key, kw = item[0], item[1]
         as_int = item[2] if len(item) > 2 else False
-        result[key] = _num(kw, 4, as_int=as_int)
+        v = _num(kw, 4, as_int=as_int)
+        if key == 'vat_rate':
+            v = _normalize_vat(v)
+        result[key] = v
 
     # 付款方式（字符串字段）
     result['payment_method'] = _str('付款方式', 4)
@@ -364,43 +608,62 @@ def parse_audit_excel(file_path: str | Path) -> dict:
 
     result = {'file_name': path.name}
 
-    # === 项目信息 ===
-    # 格式A: 停车券业务的「1.项目基本信息」sheet
-    if '1.项目基本信息' in wb.sheetnames:
-        result['project_info'] = parse_project_info(wb['1.项目基本信息'])
-    # 格式B: 车位置换业务的「项目信息收集表」sheet
-    elif '项目信息收集表' in wb.sheetnames:
-        result['project_info'] = parse_project_info_collection(wb['项目信息收集表'])
+    # === 格式C 检测：新模板（新车场调研表 + 合作车场信息收集表 + 项目评估计算）===
+    is_format_c = '新车场调研表' in wb.sheetnames and '合作车场信息收集表' in wb.sheetnames
 
-    # === 测算数据 ===
-    # 停车券业务: 测算工具（金额券）
-    calc_sheet_name = None
-    for name in wb.sheetnames:
-        if '测算工具' in name and '金额券' in name:
-            calc_sheet_name = name
-            break
-    if calc_sheet_name:
-        result['calculation_tool'] = parse_calculation_tool(wb[calc_sheet_name])
+    if is_format_c:
+        # 项目信息：合并两个 sheet
+        project_info = {}
+        if '新车场调研表' in wb.sheetnames:
+            project_info.update(parse_survey_form(wb['新车场调研表']))
+        if '合作车场信息收集表' in wb.sheetnames:
+            coop = parse_cooperation_info(wb['合作车场信息收集表'])
+            project_info.update(coop)  # 合作信息覆盖 survey 重复字段（更权威）
+        result['project_info'] = project_info
 
-    # 车位置换业务: 折扣采买测算表
-    discount_sheet = None
-    for name in wb.sheetnames:
-        if '折扣采买' in name or '时长采买' in name:
-            discount_sheet = name
-            break
-    if discount_sheet:
-        parsed = parse_discount_purchase(wb[discount_sheet])
-        if parsed:
-            result['discount_purchase'] = parsed
+        # 测算数据：单 sheet 左右分区
+        if '项目评估计算' in wb.sheetnames:
+            voucher_calc, spot_calc = parse_evaluation_calc(wb['项目评估计算'])
+            if voucher_calc:
+                result['calculation_tool'] = voucher_calc
+            if spot_calc:
+                result['spot_exchange_calc'] = spot_calc
+    else:
+        # === 格式A/B：原有模板 ===
+        # 项目信息
+        if '1.项目基本信息' in wb.sheetnames:
+            result['project_info'] = parse_project_info(wb['1.项目基本信息'])
+        elif '项目信息收集表' in wb.sheetnames:
+            result['project_info'] = parse_project_info_collection(wb['项目信息收集表'])
 
-    # 车位置换业务: 车位置换测算表（非「运营」版本）
-    spot_calc_sheet = None
-    for name in wb.sheetnames:
-        if '车位置换测算表' in name and '运营' not in name:
-            spot_calc_sheet = name
-            break
-    if spot_calc_sheet:
-        result['spot_exchange_calc'] = parse_spot_exchange_calc(wb[spot_calc_sheet])
+        # 停车券业务: 测算工具（金额券）
+        calc_sheet_name = None
+        for name in wb.sheetnames:
+            if '测算工具' in name and '金额券' in name:
+                calc_sheet_name = name
+                break
+        if calc_sheet_name:
+            result['calculation_tool'] = parse_calculation_tool(wb[calc_sheet_name])
+
+        # 车位置换业务: 折扣采买测算表
+        discount_sheet = None
+        for name in wb.sheetnames:
+            if '折扣采买' in name or '时长采买' in name:
+                discount_sheet = name
+                break
+        if discount_sheet:
+            parsed = parse_discount_purchase(wb[discount_sheet])
+            if parsed:
+                result['discount_purchase'] = parsed
+
+        # 车位置换业务: 车位置换测算表（非「运营」版本）
+        spot_calc_sheet = None
+        for name in wb.sheetnames:
+            if '车位置换测算表' in name and '运营' not in name:
+                spot_calc_sheet = name
+                break
+        if spot_calc_sheet:
+            result['spot_exchange_calc'] = parse_spot_exchange_calc(wb[spot_calc_sheet])
 
     # 车位置换业务: 车位置换测算表（非「运营」版本）
     has_voucher = 'calculation_tool' in result

@@ -21,6 +21,8 @@
     const parsedPreview = $('#parsed-preview');
     const businessType = $('#business-type');
     const enableLLM = $('#enable-llm');
+    const llmContextSection = $('#llm-context-section');
+    const llmContextContent = $('#llm-context-content');
     const startBtn = $('#start-btn');
     const statusBar = $('#status-bar');
     const statusText = $('#status-text');
@@ -59,6 +61,37 @@
         statusBar.classList.add('hidden');
         resultSection.classList.add('hidden');
         fileInput.value = '';
+        llmContextSection.classList.add('hidden');
+        llmContextContent.innerHTML = '';
+    });
+
+    // --- LLM 模式切换：加载 prompts 上下文约束 ---
+    async function loadPromptContext() {
+        const bt = businessType.value;
+        try {
+            const resp = await fetch(`/api/prompts/${bt}`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            llmContextContent.textContent = data.context;
+            llmContextSection.classList.remove('hidden');
+        } catch (e) {
+            console.error('加载 prompts 上下文失败:', e);
+        }
+    }
+
+    enableLLM.addEventListener('change', () => {
+        if (enableLLM.checked) {
+            loadPromptContext();
+        } else {
+            llmContextSection.classList.add('hidden');
+            llmContextContent.innerHTML = '';
+        }
+    });
+
+    businessType.addEventListener('change', () => {
+        if (enableLLM.checked) {
+            loadPromptContext();
+        }
     });
 
     // --- 文件上传 ---
@@ -288,7 +321,8 @@
             statusText.textContent = '审核完成';
             document.querySelector('.spinner')?.style && (document.querySelector('.spinner').style.display = 'none');
             es.close();
-            startBtn.disabled = false;
+            startBtn.disabled = true;
+            startBtn.textContent = '已审核';
         });
 
         es.onerror = () => {
@@ -509,6 +543,7 @@
             });
 
             html += '</tbody></table>';
+            html += '<p style="margin:4px 0 0;font-size:12px;color:#999;">月票配置数据仅展示前100条，如需完整数据请联系技术支持</p>';
         }
 
         // 企业信息
@@ -527,6 +562,23 @@
                 html += `<tr><th>${k}</th><td>${v || '-'}</td></tr>`;
             });
             html += '</tbody></table>';
+        }
+
+        // 可消耗收入占比（自有小程序/ETC支付渠道）
+        const channelIncome = data.channel_income;
+        if (channelIncome) {
+            html += '<h3 class="comparison-subtitle">可消耗收入占比（自有小程序/ETC支付渠道）</h3>';
+            if (channelIncome.error) {
+                html += '<div class="error-msg">获取渠道收入数据失败：' + escapeHtml(channelIncome.error) + '</div>';
+            } else {
+                html += '<table class="comparison-table"><tbody>';
+                html += '<tr><th>查询时间范围（近3个月）</th><td>' + (channelIncome.date_range || '-') + '</td></tr>';
+                html += '<tr><th>开放平台收入 (A)</th><td>' + formatValue(channelIncome.value_a, '元') + '</td></tr>';
+                html += '<tr><th>总收入 (B)</th><td>' + formatValue(channelIncome.value_b, '元') + '</td></tr>';
+                html += '<tr class="diff-info"><th>可消耗收入占比 (A/B)</th><td><strong>' + (channelIncome.ratio * 100).toFixed(2) + '%</strong></td></tr>';
+                html += '<tr><th>计算公式</th><td style="color:#666;font-size:12px;">' + escapeHtml(channelIncome.formula) + '</td></tr>';
+                html += '</tbody></table>';
+            }
         }
 
         if (html) {

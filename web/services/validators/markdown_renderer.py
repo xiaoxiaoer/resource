@@ -138,6 +138,15 @@ def _render_summary(result: ValidationResult) -> str:
     return f'## 总结\n\n{summary_line}{advice}'
 
 
+def _render_notes(result: ValidationResult) -> str:
+    if not result.notes:
+        return ''
+    lines = ['## 备注']
+    for n in result.notes:
+        lines.append(f'- {n}')
+    return '\n'.join(lines)
+
+
 def render_markdown(result: ValidationResult) -> str:
     sections = [
         '# 资源置换评估初审结果',
@@ -148,6 +157,10 @@ def render_markdown(result: ValidationResult) -> str:
         _render_evaluation(result),
         _render_trend(result),
         '---',
-        _render_summary(result),
     ]
+    notes_block = _render_notes(result)
+    if notes_block:
+        sections.append(notes_block)
+        sections.append('---')
+    sections.append(_render_summary(result))
     return '\n\n'.join(s for s in sections if s)

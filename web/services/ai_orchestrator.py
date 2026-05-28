@@ -132,6 +132,62 @@ def _filter_llm_output(business_type: str, markdown: str) -> str:
 
 def _build_system_prompt(business_type: str) -> str:
     """构建 system prompt，包含所有配置文件"""
+    return build_prompt_context(business_type) + f"""
+
+---
+
+## 工作指引
+
+1. 先检查资料完整性（对照必填字段定义），如有缺失项直接输出缺失项并要求补充
+2. 完整性通过后，调用工具获取 BEM 数据和企查查数据
+3. 按检查清单逐项对比分析，每项给出 ✅/⚠️/❌/📋 标记
+4. 按输出模板格式输出完整审核结果
+5. 业务类型为：{"停车券业务" if business_type == "parking_voucher" else "车位置换业务"}
+
+---
+
+## 字段名称规范（严格按 Excel 表格标签）
+
+审核结果中引用的字段名称必须与上传的 Excel 表格标签完全一致，不得随意变更或简化。
+
+**停车券业务字段名**：
+- 车场名称
+- 车场地址
+- 合作客户主体
+- 承包到期日期
+- 停车场收费规则
+- 是否允许张贴物料
+- 是否存在自有小程序/ETC支付渠道
+- 停车场车位数量
+- 临停收入（或：月均临停收入）
+- 月票收入（或：月均月票收入）
+- 合同有效年限（月）
+- 券消耗年限（月）
+- 增值税专用发票
+
+**车位置换业务字段名**：
+- 车场名称
+- 车场地址
+- 车场业态
+- 合作客户主体
+- 承包到期日期
+- 停车场收费规则
+- 车位占用率
+- 是否允许张贴物料
+- 结算模式
+- 临停收入
+- 月票收入
+- 设备、服务置换金额（元）
+- 增值税专用发票
+- 对外办理月卡费用（元/月）
+- 置换车位数
+- 回本后甲方分润比例
+- 合同有效年限（月）
+"""
+
+
+def build_prompt_context(business_type: str) -> str:
+    """加载 prompts 和配置文件作为上下文约束（供 API 和 system prompt 共用）"""
     system_md = _load_file(PROMPTS_DIR / 'system.md')
     risk_rules = _load_file(TEMPLATES_DIR / 'risk_rules.json')
     fields_required = _load_file(TEMPLATES_DIR / 'fields_required.json')
@@ -190,56 +246,6 @@ def _build_system_prompt(business_type: str) -> str:
 ## 输出模板
 
 {output_template}
-
----
-
-## 工作指引
-
-1. 先检查资料完整性（对照必填字段定义），如有缺失项直接输出缺失项并要求补充
-2. 完整性通过后，调用工具获取 BEM 数据和企查查数据
-3. 按检查清单逐项对比分析，每项给出 ✅/⚠️/❌/📋 标记
-4. 按输出模板格式输出完整审核结果
-5. 业务类型为：{"停车券业务" if business_type == "parking_voucher" else "车位置换业务"}
-
----
-
-## 字段名称规范（严格按 Excel 表格标签）
-
-审核结果中引用的字段名称必须与上传的 Excel 表格标签完全一致，不得随意变更或简化。
-
-**停车券业务字段名**：
-- 车场名称
-- 车场地址
-- 合作客户主体
-- 承包到期日期
-- 停车场收费规则
-- 是否允许张贴物料
-- 是否存在自有小程序/ETC支付渠道
-- 停车场车位数量
-- 临停收入（或：月均临停收入）
-- 月票收入（或：月均月票收入）
-- 合同有效年限（月）
-- 券消耗年限（月）
-- 增值税专用发票
-
-**车位置换业务字段名**：
-- 车场名称
-- 车场地址
-- 车场业态
-- 合作客户主体
-- 承包到期日期
-- 停车场收费规则
-- 车位占用率
-- 是否允许张贴物料
-- 结算模式
-- 临停收入
-- 月票收入
-- 设备、服务置换金额（元）
-- 增值税专用发票
-- 对外办理月卡费用（元/月）
-- 置换车位数
-- 回本后甲方分润比例
-- 合同有效年限（月）
 """
 
 
@@ -445,6 +451,11 @@ def _build_comparison(parsed_data: dict, tool_results: list[dict]) -> dict:
                     'status': _diff_status(monthly_card_fee, config_price),
                 })
 
+        # 可消耗收入占比（自有小程序/ETC支付渠道）
+        channel_data = bem.get('channel_income')
+        if channel_data:
+            comparison['channel_income'] = channel_data
+
     # --- 企业信息 ---
     if company_data:
         comparison['company_info'] = {
@@ -480,6 +491,7 @@ async def _run_audit_fixed(
     tool_results: list[dict] = []
 
     # 1. BEM 数据
+    has_own_channel = pi.get('has_own_channel', '否')
     if car_park_name:
         print(f'[DEBUG] 即将调用 run_bem_fetch({car_park_name!r})')
         yield _sse("tool_call", {
@@ -488,7 +500,7 @@ async def _run_audit_fixed(
             "status": "running",
         })
         try:
-            bem_result = await run_bem_fetch(car_park_name=car_park_name)
+            bem_result = await run_bem_fetch(car_park_name=car_park_name, has_own_channel=has_own_channel)
         except Exception as e:
             import traceback
             print(f'[DEBUG] run_bem_fetch 异常: {type(e).__name__}: {e}')
@@ -696,9 +708,11 @@ async def run_audit(
 
             try:
                 if name == "fetch_bem_data":
+                    has_own_channel_llm = parsed_data.get('project_info', {}).get('has_own_channel', '否')
                     result = await run_bem_fetch(
                         car_park_name=args.get("car_park_name", ""),
                         date_range=args.get("date_range"),
+                        has_own_channel=has_own_channel_llm,
                     )
                 elif name == "lookup_company":
                     result = await run_company_lookup(

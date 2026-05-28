@@ -45,6 +45,17 @@
                         <input type="checkbox" id="enable-llm">
                         <span>LLM 增强分析</span>
                     </label>
+
+                    <!-- LLM 上下文约束预览 -->
+                    <div id="llm-context-section" class="hidden" style="margin-top:10px;width:100%;">
+                        <details id="llm-context-details">
+                            <summary style="cursor:pointer;font-size:13px;color:#4a90d9;user-select:none;">
+                                LLM 上下文约束已加载（点击展开查看）
+                            </summary>
+                            <div id="llm-context-content" class="llm-context-preview"></div>
+                        </details>
+                    </div>
+
                     <button id="start-btn" class="btn-primary">开始审核</button>
                 </div>
             </div>

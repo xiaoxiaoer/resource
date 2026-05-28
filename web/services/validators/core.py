@@ -40,6 +40,8 @@ class ValidationResult:
     evaluation: dict = field(default_factory=dict)
     trend: list[str] = field(default_factory=list)
 
+    notes: list[str] = field(default_factory=list)
+
     def count(self, status: Status) -> int:
         return sum(1 for c in self.checks if c.status == status)
 
@@ -111,12 +113,17 @@ def run_validation(
 
     checks = _run_rules(ctx, rules)
 
+    notes: list[str] = []
+    if bem is not None:
+        notes.append('月票配置数据仅展示前100条，如需完整数据请联系技术支持')
+
     result = ValidationResult(
         business_type=business_type,
         basic_info=_basic_info(business_type, pi),
         checks=checks,
         evaluation=_evaluation(business_type, ct, sec),
         trend=_trend(bem),
+        notes=notes,
     )
     return result
 
