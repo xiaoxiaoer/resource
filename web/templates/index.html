@@ -70,6 +70,15 @@
             <div id="tool-calls" class="tool-calls"></div>
         </div>
 
+        <!-- 公式校验区 -->
+        <div id="formula-verify-section" class="card hidden">
+            <div class="result-header">
+                <h2 style="font-size:15px;">公式校验</h2>
+                <span id="formula-verify-summary" class="comparison-hint"></span>
+            </div>
+            <div id="formula-verify-content"></div>
+        </div>
+
         <!-- 结果区 -->
         <div id="result-section" class="card hidden">
             <div class="result-header">
@@ -88,6 +97,8 @@
             <div id="comparison-content"></div>
         </div>
     </div>
+
+    <div id="watermark" class="watermark-overlay"></div>
 
     <script src="/static/app.js"></script>
 </body>

@@ -184,6 +184,19 @@ h1 { font-size: 24px; margin-bottom: 4px; }
     margin-right: 8px;
 }
 
+/* 水印覆盖层 */
+.watermark-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.07;
+    user-select: none;
+}
+
 /* LLM 上下文约束预览 */
 .llm-context-preview {
     max-height: 300px;
@@ -202,4 +215,35 @@ h1 { font-size: 24px; margin-bottom: 4px; }
 
 #llm-context-details summary {
     margin-bottom: 4px;
+}
+
+/* 公式校验 */
+.formula-verify-table {
+    border-collapse: collapse; width: 100%; font-size: 13px;
+}
+.formula-verify-table th, .formula-verify-table td {
+    border: 1px solid #ddd; padding: 6px 10px; text-align: left;
+}
+.formula-verify-table th {
+    background: #f8f8f8; font-weight: 500;
+}
+.formula-verify-table tr.fv-match td:first-child {
+    border-left: 3px solid #4caf50;
+}
+.formula-verify-table tr.fv-mismatch td:first-child {
+    border-left: 3px solid #f44336;
+}
+.formula-verify-table tr.fv-nocache td:first-child {
+    border-left: 3px solid #bbb;
+}
+.fv-badge {
+    display: inline-block; padding: 1px 8px; border-radius: 3px;
+    font-size: 12px; font-weight: 500;
+}
+.fv-badge.fv-ok { background: #e6f7e6; color: #2a7d2a; }
+.fv-badge.fv-fail { background: #ffe6e6; color: #c62828; }
+.fv-badge.fv-skip { background: #f0f0f0; color: #888; }
+.formula-verify-table .formula-text {
+    font-size: 11px; color: #888; max-width: 260px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }

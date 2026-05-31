@@ -304,6 +304,11 @@
             renderComparison(data);
         });
 
+        es.addEventListener('formula_verify', (e) => {
+            const data = JSON.parse(e.data);
+            renderFormulaVerify(data);
+        });
+
         es.addEventListener('error', (e) => {
             try {
                 const data = JSON.parse(e.data);
@@ -448,6 +453,22 @@
     });
 
     // --- 数据对比渲染 ---
+    function renderFormulaVerify(data) {
+        // 公式校验功能暂时隐藏
+    }
+
+    function _fmtVal(v) {
+        if (v === null || v === undefined || v === '') return '-';
+        if (typeof v === 'number') return Number.isInteger(v) ? v.toString() : v.toFixed(4).replace(/\.?0+$/, '');
+        return String(v);
+    }
+
+    function _esc(s) {
+        const d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
+    }
+
     function renderComparison(data) {
         if (!data) return;
 
@@ -550,6 +571,7 @@
         const company = data.company_info;
         if (company) {
             html += '<h3 class="comparison-subtitle">企业信息（企查查）</h3>';
+            html += '<p style="font-size:12px;color:#999;margin:0 0 6px;">信息为网上查阅，仅提供参考</p>';
             html += '<table class="comparison-table"><tbody>';
             const companyRows = [
                 ['企业名称', company.name],
@@ -623,5 +645,59 @@
         if (!str) return '';
         return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
+
+    // --- 水印 ---
+    function createWatermark() {
+        const container = document.getElementById('watermark');
+        if (!container) return;
+
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 400;
+        canvas.height = 260;
+
+        ctx.translate(200, 130);
+        ctx.rotate(-25 * Math.PI / 180);
+        ctx.fillStyle = '#000';
+        ctx.font = 'bold 30px Arial, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('内部资料，请勿外传', 0, 0);
+
+        container.style.backgroundImage = `url(${canvas.toDataURL()})`;
+        container.style.backgroundRepeat = 'repeat';
+    }
+
+    // 防篡改：监听水印元素被删除或属性修改
+    function observeWatermark() {
+        const container = document.getElementById('watermark');
+        if (!container) return;
+
+        const parent = container.parentNode;
+        new MutationObserver((mutations) => {
+            for (const m of mutations) {
+                if (m.type === 'childList' && !parent.contains(container)) {
+                    parent.appendChild(container);
+                    createWatermark();
+                    return;
+                }
+            }
+        }).observe(parent, { childList: true });
+
+        new MutationObserver(() => {
+            if (container.style.display === 'none' ||
+                container.style.visibility === 'hidden' ||
+                container.style.opacity === '0' ||
+                container.style.zIndex === '-1') {
+                container.style.display = '';
+                container.style.visibility = '';
+                container.style.opacity = '0.07';
+                container.style.zIndex = '9999';
+                createWatermark();
+            }
+        }).observe(container, { attributes: true, attributeFilter: ['style', 'class'] });
+    }
+
+    createWatermark();
+    observeWatermark();
 
 })();

@@ -464,6 +464,7 @@ def _build_comparison(parsed_data: dict, tool_results: list[dict]) -> dict:
             'status': company_data.get('status', ''),
             'registered_capital': company_data.get('registered_capital', ''),
             'established_date': company_data.get('established_date', ''),
+            'note': '信息为网上查阅，仅提供参考',
         }
 
     return comparison
@@ -483,6 +484,14 @@ async def _run_audit_fixed(
     property_type = pi.get('property_type', '')
 
     print(f'[DEBUG] _run_audit_fixed: car_park_name={car_park_name!r}, property_type={property_type!r}')
+
+    # 0. 公式校验（新模板 Format C）
+    file_path = parsed_data.get('file_path')
+    if file_path:
+        from web.services.formula_verifier import verify_formulas
+        formula_result = verify_formulas(file_path)
+        if formula_result['has_formulas']:
+            yield _sse("formula_verify", formula_result)
 
     yield _sse("status", {"phase": "fetching_bem"})
 

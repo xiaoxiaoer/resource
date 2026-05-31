@@ -8,7 +8,7 @@ Excel 解析器 — 解析资源置换运营测算表
 
 import json
 from datetime import datetime, timedelta
-from pathlib import Path
+from typing import IO
 
 import openpyxl
 
@@ -190,7 +190,7 @@ def parse_evaluation_calc(ws) -> tuple[dict, dict | None]:
     """解析「项目评估计算」sheet — 左侧停车券(col2-4) + 右侧车位(col6-8) + 风险评估"""
     # 构建 col 2 标签→行号 映射（左侧停车券区）
     label_rows_left = {}
-    for row in range(1, min(ws.max_row + 1, 30)):
+    for row in range(1, min(ws.max_row + 1, 50)):
         label = _cell_str(ws, row, 2)
         if label:
             label_rows_left[label] = row
@@ -238,21 +238,60 @@ def parse_evaluation_calc(ws) -> tuple[dict, dict | None]:
             v = _normalize_vat(v)
         voucher[key] = v
 
-    # 风险评估区（rows 30-34, cols 2-5）
+    # 风险评估区 — 通过标签关键词查找，兼容行偏移
     evaluation_scores = []
-    for row in range(30, 35):
-        dimension = _cell_str(ws, row, 2)
-        if dimension:
-            evaluation_scores.append({
-                'category': dimension,
-                'value': str(ws.cell(row=row, column=4).value if ws.cell(row=row, column=4).value is not None else ''),
-                'score': str(ws.cell(row=row, column=5).value if ws.cell(row=row, column=5).value is not None else ''),
-            })
+    risk_header_row = _find_left('风险维度')
+    risk_score_row = _find_left('风险分数')
+    if risk_header_row and risk_score_row:
+        for row in range(risk_header_row + 1, risk_score_row):
+            dimension = _cell_str(ws, row, 2)
+            if dimension:
+                evaluation_scores.append({
+                    'category': dimension,
+                    'indicator': _cell_str(ws, row, 3) or '',
+                    'value': str(ws.cell(row=row, column=4).value if ws.cell(row=row, column=4).value is not None else ''),
+                    'score': str(ws.cell(row=row, column=5).value if ws.cell(row=row, column=5).value is not None else ''),
+                    'description': _cell_str(ws, row, 6) or '',
+                })
     voucher['evaluation_scores'] = evaluation_scores
-    voucher['risk_rating'] = _cell_str(ws, 35, 5)
+    voucher['risk_rating'] = _cell_str(ws, risk_score_row, 5) if risk_score_row else None
 
-    # 综合结果区（col 5, rows 38-44）
-    voucher['overall_assessment'] = _cell_str(ws, 42, 5)
+    # 综合结果区
+    conclusion_row = _find_left('评估结论')
+    voucher['overall_assessment'] = _cell_str(ws, conclusion_row, 5) if conclusion_row else None
+
+    # 综合计算结果字段在行40+范围，单独建索引避免误匹配早期行
+    calc_labels = {}
+    for r in range(40, min(ws.max_row + 1, 55)):
+        lb = _cell_str(ws, r, 2)
+        if lb:
+            calc_labels[lb] = r
+
+    def _find_calc(keyword):
+        for lb, r in calc_labels.items():
+            if keyword in lb:
+                return r
+        return None
+
+    r = _find_calc('时间折现系数')
+    voucher['time_discount_factor'] = _cell_num(ws, r, 5) if r else None
+    r = _find_calc('当期等效价值')
+    voucher['equivalent_value'] = _cell_num(ws, r, 5) if r else None
+    r = _find_calc('优价前毛利率')
+    voucher['gross_margin_before'] = _cell_num(ws, r, 5) if r else None
+    r = _find_calc('优价系数')
+    voucher['discount_factor'] = _cell_num(ws, r, 5) if r else None
+    r = _find_calc('优价系数权限')
+    voucher['discount_factor_auth'] = _cell_str(ws, r, 5) if r else None
+    r = _find_calc('优价后毛利率')
+    voucher['gross_margin_after'] = _cell_num(ws, r, 5) if r else None
+    # F47 毛利率权限（在优价后毛利率同行，col 6）
+    r47 = _find_calc('优价后毛利率')
+    voucher['gross_margin_after_auth'] = _cell_str(ws, r47, 6) if r47 else None
+    r = _find_calc('设备部分计提')
+    voucher['equipment_accrual_base'] = _cell_num(ws, r, 5) if r else None
+    r = _find_calc('券部分计提')
+    voucher['voucher_accrual'] = _cell_num(ws, r, 5) if r else None
 
     # 右侧车位 → spot_exchange_calc
     label_rows_right = {}
@@ -590,9 +629,12 @@ def parse_discount_purchase(ws) -> dict | None:
     return result
 
 
-def parse_audit_excel(file_path: str | Path) -> dict:
+def parse_audit_excel(file_path: str | IO[bytes]) -> dict:
     """
     解析资源置换运营测算表。
+
+    Args:
+        file_path: 文件路径或 BytesIO 对象
 
     Returns:
         {
@@ -603,10 +645,17 @@ def parse_audit_excel(file_path: str | Path) -> dict:
             'business_type': str,        # 自动判断: parking_voucher / spot_exchange / both
         }
     """
-    path = Path(file_path)
-    wb = openpyxl.load_workbook(str(path), data_only=True)
+    if isinstance(file_path, str):
+        file_name = file_path.rsplit('/', 1)[-1].rsplit('\\', 1)[-1]
+        wb = openpyxl.load_workbook(file_path, data_only=True)
+    elif hasattr(file_path, 'name'):
+        file_name = getattr(file_path, 'name', '')
+        wb = openpyxl.load_workbook(file_path, data_only=True)
+    else:
+        file_name = ''
+        wb = openpyxl.load_workbook(file_path, data_only=True)
 
-    result = {'file_name': path.name}
+    result = {'file_name': file_name}
 
     # === 格式C 检测：新模板（新车场调研表 + 合作车场信息收集表 + 项目评估计算）===
     is_format_c = '新车场调研表' in wb.sheetnames and '合作车场信息收集表' in wb.sheetnames

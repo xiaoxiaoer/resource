@@ -1,15 +1,21 @@
 """REST API 路由"""
 
 import json
+import tempfile
+from pathlib import Path
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
 
 from web.services.excel_parser import parse_audit_excel
 from web.services.audit_session import create_session, get_session
 from web.services.ai_orchestrator import build_prompt_context
-from web.config import UPLOAD_DIR, ENABLE_LLM_AUDIT
+from web.config import ENABLE_LLM_AUDIT
 
 router = APIRouter(prefix="/api")
+
+# 上传文件临时目录
+UPLOAD_DIR = Path(tempfile.gettempdir()) / 'resource_audit_uploads'
+UPLOAD_DIR.mkdir(exist_ok=True)
 
 
 @router.post("/upload")
@@ -22,11 +28,11 @@ async def upload_file(file: UploadFile = File(...)):
     if suffix not in ('xlsx', 'xls', 'png', 'jpg', 'jpeg'):
         raise HTTPException(400, f"Unsupported file type: .{suffix}")
 
-    # 保存文件
+    # 保存文件到临时目录
     session = create_session()
     session.file_name = file.filename
-    save_path = UPLOAD_DIR / f"{session.session_id}.{suffix}"
     content = await file.read()
+    save_path = UPLOAD_DIR / f"{session.session_id}.{suffix}"
     save_path.write_bytes(content)
 
     session.status = "parsing"
@@ -34,13 +40,13 @@ async def upload_file(file: UploadFile = File(...)):
     if suffix in ('xlsx', 'xls'):
         try:
             parsed = parse_audit_excel(save_path)
+            parsed['file_path'] = str(save_path)
             session.parsed_data = parsed
             session.status = "ready"
         except Exception as e:
             session.status = "error"
             raise HTTPException(500, f"Excel parse error: {e}")
     else:
-        # 图片暂时保存路径，后续由 image_parser 处理
         session.parsed_data = {
             "file_name": file.filename,
             "file_path": str(save_path),

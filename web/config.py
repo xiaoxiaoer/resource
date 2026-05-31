@@ -26,5 +26,3 @@ SKILLS_DIR = BASE_DIR / 'skills'
 PROMPTS_DIR = BASE_DIR / 'prompts'
 TEMPLATES_DIR = BASE_DIR / 'templates'
 DOC_DIR = BASE_DIR / 'doc'
-UPLOAD_DIR = BASE_DIR / 'uploads'
-UPLOAD_DIR.mkdir(exist_ok=True)

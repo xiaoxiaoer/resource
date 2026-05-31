@@ -147,17 +147,15 @@ def _basic_info(business_type: str, pi: dict) -> dict:
 
 def _evaluation(business_type: str, ct: dict, sec: dict) -> dict:
     ev = {}
-    if business_type == 'parking_voucher':
-        ev['月均消耗比例'] = ct.get('monthly_consume_ratio')
-        ev['实际采买折扣'] = ct.get('actual_purchase_discount')
-    if ct.get('overall_assessment'):
-        ev['整体评估情况'] = ct['overall_assessment']
-    for s in ct.get('evaluation_scores', []):
-        cat = s.get('category', '')
-        if cat:
-            ev[cat] = s.get('value', s.get('score', ''))
+    if ct.get('evaluation_scores'):
+        ev['risk_evaluation'] = ct['evaluation_scores']
     if ct.get('risk_rating'):
-        ev['风险评分'] = ct['risk_rating']
+        ev['risk_rating'] = ct['risk_rating']
+    for key in ('gross_margin_before', 'gross_margin_after', 'discount_factor',
+                'discount_factor_auth', 'equivalent_value', 'gross_margin_after_auth',
+                'equipment_accrual_base', 'voucher_accrual'):
+        if ct.get(key) is not None:
+            ev[key] = ct[key]
     return ev
 
 
